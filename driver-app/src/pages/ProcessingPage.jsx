@@ -34,7 +34,28 @@ export default function ProcessingPage({ formData, updateFormData, userProfile }
         })
 
         setCurrentStep(2)
-        const openaiPromise = analyzeIncidentPhotos(formData.photos, userProfile.vehicle)
+        const incidentContext = {
+          thirdPartyInvolved: formData.thirdPartyInvolved,
+          hitAndRun: formData.hitAndRun,
+          parkedWhenHit: formData.parkedWhenHit,
+          collisionObject: formData.collisionObject,
+        }
+        const vehicleForAI = {
+          rego: formData.vehicleRego,
+          make: formData.vehicleMake,
+          model: formData.vehicleModel,
+          year: formData.vehicleYear,
+          color: formData.vehicleColor,
+        }
+        const slotLabels = {
+          front: 'Front', rear: 'Rear', left: 'Left Side',
+          right: 'Right Side', closeup: 'Close-up', wide: 'Wide Shot',
+        }
+        const photoSlots = formData.photoSlots || {}
+        const slotKeys = Object.keys(photoSlots)
+        const photoLabels = slotKeys.map((k) => slotLabels[k] || k)
+
+        const openaiPromise = analyzeIncidentPhotos(formData.photos, vehicleForAI, incidentContext, photoLabels)
 
         const [results, openaiResult] = await Promise.all([roboflowPromise, openaiPromise])
 

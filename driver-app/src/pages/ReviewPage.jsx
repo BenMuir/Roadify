@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useState } from 'react'
+import { submitClaim } from '../services/claimService'
 
 const FALLBACK_DAMAGE = [
   { label: 'Damage detected', confidence: 0 },
@@ -15,9 +16,12 @@ function InfoRow({ label, value }) {
   )
 }
 
-export default function ReviewPage({ formData, userProfile }) {
+export default function ReviewPage({ formData, updateFormData, userProfile }) {
   const navigate = useNavigate()
   const [viewerImage, setViewerImage] = useState(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitStatus, setSubmitStatus] = useState('')
+  const [submitError, setSubmitError] = useState(null)
   const v = userProfile.vehicle
   const damageItems = formData.damagePredictions?.length > 0
     ? formData.damagePredictions
@@ -129,14 +133,40 @@ export default function ReviewPage({ formData, userProfile }) {
           </motion.div>
         )}
 
-        {/* Fault status */}
+        {/* Incident context */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15 }}
           className="bg-white/[0.03] rounded-2xl p-4 border border-white/5"
         >
-          <p className="text-xs font-semibold text-white/40 uppercase tracking-widest mb-2">Liability</p>
+          <p className="text-xs font-semibold text-white/40 uppercase tracking-widest mb-2">Incident Context</p>
+          <div className="flex flex-wrap gap-2 mb-2">
+            {formData.thirdPartyInvolved === true ? (
+              <span className="px-2.5 py-1 bg-brand/15 text-brand-light text-xs font-medium rounded-full">
+                Third party involved
+              </span>
+            ) : formData.thirdPartyInvolved === false ? (
+              <span className="px-2.5 py-1 bg-white/10 text-white/50 text-xs font-medium rounded-full">
+                Single vehicle
+              </span>
+            ) : null}
+            {formData.hitAndRun && (
+              <span className="px-2.5 py-1 bg-severity-major/15 text-severity-major text-xs font-medium rounded-full">
+                Hit and run
+              </span>
+            )}
+            {formData.parkedWhenHit && (
+              <span className="px-2.5 py-1 bg-white/10 text-white/50 text-xs font-medium rounded-full">
+                Parked when hit
+              </span>
+            )}
+            {formData.collisionObject && (
+              <span className="px-2.5 py-1 bg-white/10 text-white/50 text-xs font-medium rounded-full capitalize">
+                Hit {formData.collisionObject}
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             {formData.atFault === true ? (
               <span className="px-3 py-1.5 bg-severity-major/15 text-severity-major text-sm font-semibold rounded-full">
@@ -148,7 +178,7 @@ export default function ReviewPage({ formData, userProfile }) {
               </span>
             ) : (
               <span className="px-3 py-1.5 bg-white/10 text-white/50 text-sm font-semibold rounded-full">
-                Not specified
+                Fault not specified
               </span>
             )}
           </div>
@@ -164,10 +194,10 @@ export default function ReviewPage({ formData, userProfile }) {
           <p className="text-xs font-semibold text-white/40 uppercase tracking-widest mb-1">Vehicles</p>
           <InfoRow label="Your vehicle" value={`${v.color} ${v.make} ${v.model}`} />
           <InfoRow label="Your plate" value={formData.vehicleRego} />
-          {(formData.otherVehicleRego || formData.otherVehicleMake) && (
+          {formData.thirdPartyInvolved && (formData.otherVehicleRego || formData.otherVehicleMake || formData.otherVehicleColor) && (
             <>
               <div className="border-t border-white/5 my-1" />
-              {formData.otherVehicleMake && (
+              {(formData.otherVehicleMake || formData.otherVehicleColor) && (
                 <InfoRow
                   label="Other vehicle"
                   value={[formData.otherVehicleColor, formData.otherVehicleMake, formData.otherVehicleModel].filter(Boolean).join(' ')}
@@ -176,9 +206,12 @@ export default function ReviewPage({ formData, userProfile }) {
               {formData.otherVehicleRego && (
                 <InfoRow label="Other plate" value={formData.otherVehicleRego} />
               )}
-              {formData.otherVehicleColor && !formData.otherVehicleMake && (
-                <InfoRow label="Other color" value={formData.otherVehicleColor} />
-              )}
+            </>
+          )}
+          {formData.thirdPartyInvolved === false && formData.collisionObject && (
+            <>
+              <div className="border-t border-white/5 my-1" />
+              <InfoRow label="Object hit" value={formData.collisionObject} />
             </>
           )}
         </motion.div>
@@ -222,19 +255,57 @@ export default function ReviewPage({ formData, userProfile }) {
         </motion.div>
 
         <div className="pt-3 pb-2 space-y-3">
+          {submitError && (
+            <div className="px-4 py-3 bg-red-400/10 border border-red-400/20 rounded-xl">
+              <p className="text-red-400 text-xs">{submitError}</p>
+            </div>
+          )}
           <motion.button
             whileTap={{ scale: 0.97 }}
-            onClick={() => navigate('/confirmation')}
-            className="w-full bg-severity-minor hover:brightness-110 text-white font-bold py-4 rounded-2xl shadow-lg shadow-severity-minor/20 transition-all cursor-pointer flex items-center justify-center gap-2 text-lg"
+            onClick={async () => {
+              if (submitting) return
+              setSubmitting(true)
+              setSubmitError(null)
+              try {
+                const result = await submitClaim(formData, setSubmitStatus)
+                if (result?.id) {
+                  updateFormData({ claimId: result.id })
+                }
+                navigate('/confirmation')
+              } catch (err) {
+                console.error('Submit failed:', err)
+                setSubmitError(err.message || 'Submission failed. Please try again.')
+                setSubmitting(false)
+              }
+            }}
+            disabled={submitting}
+            className={`w-full font-bold py-4 rounded-2xl shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2 text-lg ${
+              submitting
+                ? 'bg-severity-minor/50 text-white/70 cursor-wait'
+                : 'bg-severity-minor hover:brightness-110 text-white shadow-severity-minor/20'
+            }`}
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-            </svg>
-            Submit Claim
+            {submitting ? (
+              <>
+                <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                {submitStatus || 'Submitting...'}
+              </>
+            ) : (
+              <>
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                </svg>
+                Submit Claim
+              </>
+            )}
           </motion.button>
           <button
             onClick={() => navigate('/details')}
-            className="w-full text-white/40 font-medium py-3 rounded-2xl hover:bg-white/5 transition-colors cursor-pointer text-sm"
+            disabled={submitting}
+            className="w-full text-white/40 font-medium py-3 rounded-2xl hover:bg-white/5 transition-colors cursor-pointer text-sm disabled:opacity-30"
           >
             Edit Details
           </button>

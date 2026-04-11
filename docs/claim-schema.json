@@ -1,0 +1,73 @@
+{
+  "id": "uuid — auto-generated unique claim identifier",
+  "type": "claim",
+  "status": "Submitted",
+  "severity": "Major | Medium | Minor | Pending — auto-calculated from damageDetections",
+  "createdAt": "ISO 8601 timestamp — when the claim was saved to DB",
+
+  "driver": {
+    "name": "string — claimant's full name",
+    "phone": "string — claimant's phone number",
+    "policyNumber": "string — insurance policy number"
+  },
+
+  "claimantVehicle": {
+    "rego": "string — registration plate",
+    "make": "string — e.g. Toyota",
+    "model": "string — e.g. HiLux",
+    "year": "string — e.g. 2022",
+    "color": "string — e.g. Silver"
+  },
+
+  "otherVehicle": {
+    "_note": "null when thirdPartyInvolved is false",
+    "rego": "string — AI-detected or manually entered, may be empty",
+    "color": "string — AI-detected or manually entered, may be empty",
+    "make": "string — AI-detected or manually entered, may be empty",
+    "model": "string — AI-detected or manually entered, may be empty"
+  },
+
+  "incidentContext": {
+    "thirdPartyInvolved": "boolean | null — was another vehicle involved",
+    "hitAndRun": "boolean | null — only set when thirdPartyInvolved is true",
+    "parkedWhenHit": "boolean | null — only set when hitAndRun is true",
+    "collisionObject": "string — pole | barrier | tree | animal | kerb | other — only set when thirdPartyInvolved is false",
+    "atFault": "boolean | null — true = at fault, false = not at fault, null = unsure"
+  },
+
+  "incident": {
+    "type": "string — collision | rollover | breakdown | hit-and-run | weather-damage | other",
+    "description": "string — AI-generated or manually entered incident description",
+    "location": {
+      "lat": "number | null — from browser geolocation",
+      "lng": "number | null — from browser geolocation",
+      "address": "string | null — reverse-geocoded address"
+    },
+    "timestamp": "ISO 8601 timestamp — when the incident occurred"
+  },
+
+  "damageDetections": [
+    {
+      "_note": "Array of damage classes detected by Roboflow. No annotation labels/coordinates, just classes.",
+      "class": "string — e.g. dent, scratch, broken_light, bumper_damage, bonnet_damage, paint_damage, windshield_damage",
+      "confidence": "number — 0-100 percentage"
+    }
+  ],
+
+  "photos": [
+    {
+      "_note": "Each photo links a blob image to the claim. Slots: front, rear, left, right, closeup, wide.",
+      "slot": "string — which photo slot this belongs to",
+      "type": "original | annotated",
+      "blobUrl": "string — public Azure Blob Storage URL",
+      "blobName": "string — blob path: claims/{claimId}/{slot}-{type}.jpg"
+    }
+  ],
+
+  "_severityRules": {
+    "Major": "airbag_deployed, chassis_damage, shattered_windshield, rollover",
+    "Medium": "dent, door_damage, broken_light, bumper_damage, bonnet_damage",
+    "Minor": "scratch, paint_damage, or any other class",
+    "Pending": "no damageDetections provided"
+  }
+}

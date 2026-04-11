@@ -37,9 +37,14 @@ const initialFormData = {
   otherVehicleMake: '',
   otherVehicleModel: '',
   atFault: null,
+  thirdPartyInvolved: null,
+  hitAndRun: null,
+  parkedWhenHit: null,
+  collisionObject: '',
   incidentType: '',
   description: '',
   photos: [],
+  photoSlots: {},
   roboflowResults: null,
   annotatedImages: [],
   damagePredictions: [],
@@ -92,7 +97,7 @@ export default function App() {
           />
           <Route
             path="/review"
-            element={<ReviewPage formData={formData} userProfile={USER_PROFILE} />}
+            element={<ReviewPage formData={formData} updateFormData={updateFormData} userProfile={USER_PROFILE} />}
           />
           <Route
             path="/confirmation"

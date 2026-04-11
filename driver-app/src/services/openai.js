@@ -21,25 +21,59 @@ function resizeForVision(dataUrl) {
   })
 }
 
-function buildPrompt(vehicle) {
+function buildPrompt(vehicle, incidentContext) {
+  const ctx = incidentContext || {}
+  const thirdParty = ctx.thirdPartyInvolved
+  const hitAndRun = ctx.hitAndRun
+  const parkedWhenHit = ctx.parkedWhenHit
+  const collisionObject = ctx.collisionObject
+
+  let contextBlock = ''
+  if (thirdParty === true) {
+    contextBlock += '\nINCIDENT CONTEXT: Another vehicle was involved.'
+    if (hitAndRun) {
+      contextBlock += ' This was a HIT AND RUN — the other driver left the scene.'
+      if (parkedWhenHit) {
+        contextBlock += ' The claimant\'s vehicle was PARKED when it was hit.'
+      }
+      contextBlock += ' Try to identify the other vehicle from any photos that may have captured it before it left, or from paint transfer / debris.'
+    } else {
+      contextBlock += ' The other driver is present at the scene.'
+    }
+  } else if (thirdParty === false) {
+    contextBlock += `\nINCIDENT CONTEXT: No other vehicle was involved. This is a single-vehicle incident.`
+    if (collisionObject) {
+      contextBlock += ` The vehicle collided with: ${collisionObject}.`
+    }
+    contextBlock += ' Do NOT look for another vehicle — focus on the damage to the claimant\'s vehicle and the object/environment involved.'
+  }
+
+  const otherVehicleInstructions = thirdParty
+    ? `1. **Other Vehicle Rego**: Look for number plates that are NOT "${vehicle.rego}". Read the plate text exactly as shown.
+2. **Other Vehicle Color**: The body color of the other vehicle (not the claimant's ${vehicle.color} ${vehicle.make}).
+3. **Other Vehicle Make**: The manufacturer of the other vehicle (e.g. Toyota, Ford, Hyundai). Use visible badges, grille design, or body shape.
+4. **Other Vehicle Model**: The specific model if identifiable (e.g. Corolla, Ranger, i30).`
+    : `1-4. Set otherVehicleRego, otherVehicleColor, otherVehicleMake, otherVehicleModel to empty strings (no other vehicle involved).`
+
   return `You are an AI assistant analyzing photos from a vehicle incident for an insurance claim.
 
 The claimant drives a **${vehicle.color} ${vehicle.year} ${vehicle.make} ${vehicle.model}** with registration plate **${vehicle.rego}**.
+${contextBlock}
 
 Carefully analyze ALL provided photos and extract the following:
 
-1. **Other Vehicle Rego**: Look for number plates that are NOT "${vehicle.rego}". Read the plate text exactly as shown. If multiple other vehicles, pick the one most likely involved in the incident.
-2. **Other Vehicle Color**: The body color of the other vehicle (not the claimant's ${vehicle.color} ${vehicle.make}).
-3. **Other Vehicle Make**: The manufacturer of the other vehicle (e.g. Toyota, Ford, Hyundai). Use visible badges, grille design, or body shape to identify.
-4. **Other Vehicle Model**: The specific model if identifiable (e.g. Corolla, Ranger, i30).
+${otherVehicleInstructions}
 5. **Incident Type**: Classify as exactly one of: collision, rollover, breakdown, hit-and-run, weather-damage, other
 6. **Description**: A brief 1-2 sentence factual description of the incident based on visible damage, vehicle positions, and scene context.
 
 IMPORTANT:
 - The claimant's vehicle is the ${vehicle.color} ${vehicle.make} ${vehicle.model} — do NOT report its details as the "other" vehicle.
+- Photos may show EACH vehicle SEPARATELY — the user may have taken close-ups of their own car in some photos and the other vehicle in different photos. Analyze ALL photos collectively to build a complete picture, not each photo in isolation.
+- A photo showing only one vehicle does NOT mean there is no other vehicle involved — check other photos in the set.
+- Each photo may have a label like [Photo: Front] or [Photo: Close-up]. These are SUGGESTED slots the user chose — they are approximate guidelines, not strict descriptions. The user may not fill all slots, and the actual photo content may not perfectly match the label. Always rely on what you SEE in the image, not just the label.
 - If you cannot determine a field, return an empty string for that field.
 - For the rego plate, only include it if you can read it with reasonable confidence.
-
+${thirdParty === false ? '- This is a single-vehicle incident. The description should focus on the object hit and resulting damage.\n' : ''}
 Respond with ONLY valid JSON, no markdown fences:
 {
   "otherVehicleRego": "",
@@ -51,18 +85,26 @@ Respond with ONLY valid JSON, no markdown fences:
 }`
 }
 
-export async function analyzeIncidentPhotos(photos, vehicle) {
+export async function analyzeIncidentPhotos(photos, vehicle, incidentContext, photoLabels) {
   if (!API_KEY) {
     console.warn('[OpenAI] No API key configured, skipping analysis')
     return null
   }
 
-  const resizedPhotos = await Promise.all(photos.slice(0, 4).map(resizeForVision))
+  const toProcess = photos.slice(0, 6)
+  const labels = photoLabels ? photoLabels.slice(0, 6) : []
+  const resizedPhotos = await Promise.all(toProcess.map(resizeForVision))
 
-  const imageMessages = resizedPhotos.map((dataUrl) => ({
-    type: 'image_url',
-    image_url: { url: dataUrl, detail: 'high' },
-  }))
+  const imageMessages = []
+  resizedPhotos.forEach((dataUrl, i) => {
+    if (labels[i]) {
+      imageMessages.push({ type: 'text', text: `[Photo: ${labels[i]}]` })
+    }
+    imageMessages.push({
+      type: 'image_url',
+      image_url: { url: dataUrl, detail: 'high' },
+    })
+  })
 
   const body = {
     model: 'gpt-4o',
@@ -76,7 +118,7 @@ export async function analyzeIncidentPhotos(photos, vehicle) {
       {
         role: 'user',
         content: [
-          { type: 'text', text: buildPrompt(vehicle) },
+          { type: 'text', text: buildPrompt(vehicle, incidentContext) },
           ...imageMessages,
         ],
       },

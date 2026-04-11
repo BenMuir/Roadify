@@ -1,5 +1,5 @@
 const API_KEY = '7IYJYzXg7R3qVg8C4zO1'
-const WORKFLOW_URL = 'https://detect.roboflow.com/infer/workflows/guardrail-refinement/car-damage-detection-pipeline-1775872991910'
+const WORKFLOW_URL = 'https://serverless.roboflow.com/guardrail-refinement/workflows/find-car-damages-bonnet-damages-scratches-broken-lights-windshield-damages-dents-paint-damages-scratches-and-dents'
 
 const MAX_DIMENSION = 1024
 

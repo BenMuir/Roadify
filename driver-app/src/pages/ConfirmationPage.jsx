@@ -4,7 +4,9 @@ import { useState } from 'react'
 
 export default function ConfirmationPage({ resetForm, formData }) {
   const navigate = useNavigate()
-  const refNumber = `RD-${Date.now().toString(36).toUpperCase().slice(-6)}`
+  const refNumber = formData?.claimId
+    ? formData.claimId.slice(0, 8).toUpperCase()
+    : `RD-${Date.now().toString(36).toUpperCase().slice(-6)}`
   const [viewerImage, setViewerImage] = useState(null)
 
   const annotatedImages = formData?.annotatedImages || []
