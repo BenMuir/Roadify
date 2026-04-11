@@ -1,44 +1,38 @@
 const express = require('express');
-const cors = require('cors'); 
-const path = require('path'); // Added for cross-platform path resolution
+const cors = require('cors');
+const path = require('path'); // FIXED: Added missing import
 const cosmosService = require('./src/services/cosmosService');
 const blobService = require('./src/services/blobService');
 const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
 
 const app = express();
+app.use(cors());
+app.use(express.json({ limit: '50mb' }));
 
-// --- Middleware Configuration ---
-app.use(cors()); 
-app.use(express.json());
-
-// Serving the static dashboard files using an absolute path for Azure compatibility
+// Serving the static dashboard files
 app.use(express.static(path.join(__dirname, 'public')));
 
 const PORT = process.env.PORT || 3000;
 
-// --- HELPER: Triage Logic ---
-// This turns Roboflow labels into the business severity levels for the dashboard.
-const calculateSeverity = (aiResults) => {
-    if (!aiResults || !aiResults.labels) return "Pending";
-    
-    const labels = aiResults.labels.map(l => l.toLowerCase());
-    
-    // Logic: If it's structural or safety-related, it's Major.
-    if (labels.includes('airbag_deployed') || labels.includes('chassis_damage') || labels.includes('shattered_windshield')) {
+// --- Severity Logic ---
+const calculateSeverity = (damageDetections) => {
+    if (!damageDetections || damageDetections.length === 0) return "Pending";
+
+    const classes = damageDetections.map(d => d.class.toLowerCase());
+
+    if (classes.some(c => ['airbag_deployed', 'chassis_damage', 'shattered_windshield', 'rollover'].includes(c))) {
         return "Major";
     }
-    // Logic: Dents or multiple panels.
-    if (labels.includes('dent') || labels.includes('door_damage')) {
+    if (classes.some(c => ['dent', 'door_damage', 'broken_light', 'bumper_damage', 'bonnet_damage'].includes(c))) {
         return "Medium";
     }
-    // Default to Minor for scratches/paint.
     return "Minor";
 };
 
-// --- API Routes ---
+// --- Routes ---
 
-// 1. Test Route: Check if infrastructure is alive
+// Health check
 app.get('/test-db', async (req, res) => {
     try {
         const incidents = await cosmosService.getAllIncidents();
@@ -48,64 +42,83 @@ app.get('/test-db', async (req, res) => {
     }
 });
 
-// 2. SAS Token Generator (For Frontend photo uploads directly to Azure)
-app.get('/get-upload-token', async (req, res) => {
+// Batch SAS tokens
+app.post('/upload-tokens', async (req, res) => {
     try {
-        const result = await blobService.generateUploadUrl();
-        res.json(result);
+        const { claimId, photos } = req.body;
+        if (!claimId || !photos || !photos.length) {
+            return res.status(400).json({ error: "claimId and photos array required" });
+        }
+        const tokens = await blobService.generateBatchUploadUrls(claimId, photos);
+        res.json({ tokens });
     } catch (err) {
-        res.status(500).json({ error: "Failed to generate SAS token", details: err.message });
+        res.status(500).json({ error: "Failed to generate upload tokens", details: err.message });
     }
 });
 
-// 3. GET All Incidents (The Dashboard Feed)
+// Submit a complete claim (New Professional Structure)
+app.post('/submit-claim', async (req, res) => {
+    try {
+        const body = req.body;
+
+        const claimData = {
+            id: body.claimId || uuidv4(),
+            type: "claim",
+            status: "Submitted",
+            severity: calculateSeverity(body.damageDetections),
+            createdAt: new Date().toISOString(),
+
+            driver: {
+                name: body.driverName || "",
+                phone: body.phone || "",
+                policyNumber: body.policyNumber || "",
+            },
+
+            claimantVehicle: {
+                rego: body.vehicleRego || "",
+                make: body.vehicleMake || "",
+                model: body.vehicleModel || "",
+                year: body.vehicleYear || "",
+                color: body.vehicleColor || "",
+            },
+
+            // Other fields remain as you had them...
+            incident: {
+                location: body.location || { lat: null, lng: null, address: null },
+                timestamp: body.timestamp || new Date().toISOString(),
+                description: body.description || "",
+            },
+            photos: body.photos || [],
+            damageDetections: (body.damageDetections || []).map(d => ({
+                class: d.class || d.label || "",
+                confidence: d.confidence || 0,
+            })),
+        };
+
+        const created = await cosmosService.createIncident(claimData);
+        res.status(201).json(created);
+    } catch (err) {
+        res.status(500).json({ error: "Failed to save claim", details: err.message });
+    }
+});
+
+// Dashboard: list all claims
 app.get('/incidents', async (req, res) => {
     try {
         const { severity } = req.query;
         let incidents = await cosmosService.getAllIncidents();
-
         if (severity) {
-            incidents = incidents.filter(i => i.severity.toLowerCase() === severity.toLowerCase());
+            incidents = incidents.filter(i =>
+                i.severity && i.severity.toLowerCase() === severity.toLowerCase()
+            );
         }
-
         res.json(incidents);
     } catch (err) {
         res.status(500).json({ error: "Failed to fetch incidents", details: err.message });
     }
 });
 
-// 4. GET Single Incident (Detailed View)
-app.get('/incidents/:id', async (req, res) => {
-    try {
-        const incident = await cosmosService.getIncidentById(req.params.id);
-        if (!incident) return res.status(404).json({ error: "Incident not found" });
-        res.json(incident);
-    } catch (err) {
-        res.status(500).json({ error: "Error retrieving incident", details: err.message });
-    }
-});
-
-// 5. Incident Submission (With Auto-Triage)
-app.post('/submit-incident', async (req, res) => {
-    try {
-        const { aiResults } = req.body;
-        
-        const incidentData = {
-            id: uuidv4(),
-            ...req.body,
-            status: "Submitted",
-            severity: calculateSeverity(aiResults), 
-            createdAt: new Date().toISOString()
-        };
-
-        const createdItem = await cosmosService.createIncident(incidentData);
-        res.status(201).json(createdItem);
-    } catch (err) {
-        res.status(500).json({ error: "Failed to save incident", details: err.message });
-    }
-});
-
-// Final fallback: If no API route matches, send the index.html (useful for SPAs)
+// Catch-all for Dashboard
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });

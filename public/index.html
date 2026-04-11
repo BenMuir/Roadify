@@ -6,25 +6,31 @@
     <title>Roadify | Internal Admin Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-50 font-sans">
+<body class="bg-gray-50 font-sans text-gray-900">
     <div class="max-w-6xl mx-auto py-10 px-4">
-        <div class="flex justify-between items-center mb-8">
-            <h1 class="text-3xl font-bold text-gray-900">Roadify <span class="text-blue-600">Admin</span></h1>
-            <div id="status" class="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">Live Feed Active</div>
+        <div class="flex justify-between items-center mb-8 border-b pb-6">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900">Roadify <span class="text-blue-600">Admin</span></h1>
+                <p class="text-gray-500 text-sm mt-1">Real-time incident triage monitor</p>
+            </div>
+            <div id="status" class="flex items-center space-x-2 px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold uppercase tracking-wider">
+                <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                <span>Live Feed Active</span>
+            </div>
         </div>
 
-        <div class="bg-white shadow-md rounded-lg overflow-hidden">
+        <div class="bg-white shadow-sm border border-gray-200 rounded-xl overflow-hidden">
             <table class="min-w-full divide-y divide-gray-200">
-                <thead class="bg-gray-100">
+                <thead class="bg-gray-50">
                     <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vehicle</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Severity</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                        <th class="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Submitted</th>
+                        <th class="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Vehicle (Rego)</th>
+                        <th class="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Severity</th>
+                        <th class="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Coordinates</th>
+                        <th class="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
                     </tr>
                 </thead>
-                <tbody id="incident-table" class="bg-white divide-y divide-gray-200">
+                <tbody id="incident-table" class="bg-white divide-y divide-gray-100">
                     </tbody>
             </table>
         </div>
@@ -33,28 +39,40 @@
     <script>
         async function fetchIncidents() {
             try {
-                // Change this to your live Azure URL later!
                 const response = await fetch('/incidents'); 
                 const data = await response.json();
                 const tableBody = document.getElementById('incident-table');
                 tableBody.innerHTML = '';
 
-                data.forEach(incident => {
+                data.forEach(claim => {
+                    // MAPPING: Support both new nested structure and old flat structure
+                    const date = claim.createdAt ? new Date(claim.createdAt).toLocaleString('en-AU', { dateStyle: 'short', timeStyle: 'short' }) : 'N/A';
+                    
+                    // Look in claimantVehicle.rego first, then fallback to old flat vehicleRego
+                    const rego = claim.claimantVehicle?.rego || claim.vehicleRego || 'Unknown';
+                    
+                    // Look in incident.location first, fallback to old flat location
+                    const lat = claim.incident?.location?.lat || claim.location?.lat || 0;
+                    const lng = claim.incident?.location?.lng || claim.location?.lng || 0;
+                    
+                    const severity = claim.severity || 'Pending';
+
                     const row = `
-                        <tr>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${new Date(incident.createdAt).toLocaleDateString()}</td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${incident.vehicleRego}</td>
+                        <tr class="hover:bg-gray-50 transition-colors">
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${date}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">${rego}</td>
                             <td class="px-6 py-4 whitespace-nowrap">
-                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getSeverityClass(incident.severity)}">
-                                    ${incident.severity}
+                                <span class="px-3 py-1 inline-flex text-xs leading-5 font-bold rounded-full ${getSeverityClass(severity)}">
+                                    ${severity.toUpperCase()}
                                 </span>
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${incident.location.lat.toFixed(2)}, ${incident.location.lng.toFixed(2)}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">${lat.toFixed(4)}, ${lng.toFixed(4)}</td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                <a href="https://www.google.com/maps/search/?api=1&query=${incident.location.lat},${incident.location.lng}" 
-                                            target="_blank" 
-                                            class="text-blue-600 hover:text-blue-900 font-bold underline">
-                                            View Map
+                                <a href="https://www.google.com/maps/search/?api=1&query=${lat},${lng}" 
+                                   target="_blank" 
+                                   class="inline-flex items-center text-blue-600 hover:text-blue-800 font-bold underline decoration-2 underline-offset-4">
+                                    View Map
+                                    <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
                                 </a>
                             </td>
                         </tr>
@@ -68,15 +86,16 @@
 
         function getSeverityClass(severity) {
             switch(severity?.toLowerCase()) {
-                case 'major': return 'bg-red-100 text-red-800';
-                case 'medium': return 'bg-yellow-100 text-yellow-800';
-                case 'minor': return 'bg-green-100 text-green-800';
-                default: return 'bg-gray-100 text-gray-800';
+                case 'major': return 'bg-red-100 text-red-700 ring-1 ring-red-200';
+                case 'medium': return 'bg-yellow-100 text-yellow-700 ring-1 ring-yellow-200';
+                case 'minor': return 'bg-green-100 text-green-700 ring-1 ring-green-200';
+                default: return 'bg-gray-100 text-gray-700 ring-1 ring-gray-200';
             }
         }
 
+        // Initial fetch and auto-refresh
         fetchIncidents();
-        setInterval(fetchIncidents, 30000); // Refresh every 30 seconds
+        setInterval(fetchIncidents, 15000); // Refreshes every 15 seconds
     </script>
 </body>
 </html>
