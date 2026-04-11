@@ -56,13 +56,32 @@ app.post('/upload-tokens', async (req, res) => {
     }
 });
 
-// Submit a complete claim (New Professional Structure)
+// Submit a complete claim — photos are uploaded server-side to avoid CORS issues
 app.post('/submit-claim', async (req, res) => {
     try {
         const body = req.body;
+        const claimId = body.claimId || uuidv4();
+
+        // Upload any photos that include base64 data
+        const incomingPhotos = body.photos || [];
+        const uploadedPhotos = [];
+        for (const photo of incomingPhotos) {
+            if (photo.dataUrl) {
+                try {
+                    const { blobUrl, blobName } = await blobService.uploadBase64ToBlob(
+                        claimId, photo.slot, photo.type, photo.dataUrl
+                    );
+                    uploadedPhotos.push({ slot: photo.slot, type: photo.type, blobUrl, blobName });
+                } catch (uploadErr) {
+                    console.error(`Photo upload failed for ${photo.slot}-${photo.type}:`, uploadErr.message);
+                }
+            } else {
+                uploadedPhotos.push({ slot: photo.slot, type: photo.type, blobUrl: photo.blobUrl, blobName: photo.blobName });
+            }
+        }
 
         const claimData = {
-            id: body.claimId || uuidv4(),
+            id: claimId,
             type: "claim",
             status: "Submitted",
             severity: calculateSeverity(body.damageDetections),
@@ -82,13 +101,28 @@ app.post('/submit-claim', async (req, res) => {
                 color: body.vehicleColor || "",
             },
 
-            // Other fields remain as you had them...
+            otherVehicle: {
+                rego: body.otherVehicleRego || "",
+                color: body.otherVehicleColor || "",
+                make: body.otherVehicleMake || "",
+                model: body.otherVehicleModel || "",
+            },
+
+            incidentContext: {
+                thirdPartyInvolved: body.thirdPartyInvolved,
+                hitAndRun: body.hitAndRun,
+                parkedWhenHit: body.parkedWhenHit,
+                collisionObject: body.collisionObject || "",
+                atFault: body.atFault,
+            },
+
             incident: {
+                type: body.incidentType || "",
                 location: body.location || { lat: null, lng: null, address: null },
                 timestamp: body.timestamp || new Date().toISOString(),
                 description: body.description || "",
             },
-            photos: body.photos || [],
+            photos: uploadedPhotos,
             damageDetections: (body.damageDetections || []).map(d => ({
                 class: d.class || d.label || "",
                 confidence: d.confidence || 0,
