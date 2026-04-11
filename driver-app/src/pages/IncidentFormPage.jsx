@@ -116,6 +116,24 @@ export default function IncidentFormPage({ formData, updateFormData, userProfile
               className={inputClass}
             />
           </Field>
+          <Field label="Vehicle Make" prefilled={!!formData.otherVehicleMake}>
+            <input
+              type="text"
+              value={formData.otherVehicleMake}
+              onChange={(e) => updateFormData({ otherVehicleMake: e.target.value })}
+              placeholder="e.g. Ford"
+              className={inputClass}
+            />
+          </Field>
+          <Field label="Vehicle Model" prefilled={!!formData.otherVehicleModel}>
+            <input
+              type="text"
+              value={formData.otherVehicleModel}
+              onChange={(e) => updateFormData({ otherVehicleModel: e.target.value })}
+              placeholder="e.g. Ranger"
+              className={inputClass}
+            />
+          </Field>
         </motion.div>
 
         {/* Incident details */}

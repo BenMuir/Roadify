@@ -1,10 +1,9 @@
 import { useNavigate } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
+import { useState } from 'react'
 
-const MOCK_DAMAGE = [
-  { label: 'Bumper dent', confidence: 94 },
-  { label: 'Headlight crack', confidence: 87 },
-  { label: 'Paint scratch', confidence: 76 },
+const FALLBACK_DAMAGE = [
+  { label: 'Damage detected', confidence: 0 },
 ]
 
 function InfoRow({ label, value }) {
@@ -18,7 +17,11 @@ function InfoRow({ label, value }) {
 
 export default function ReviewPage({ formData, userProfile }) {
   const navigate = useNavigate()
+  const [viewerImage, setViewerImage] = useState(null)
   const v = userProfile.vehicle
+  const damageItems = formData.damagePredictions?.length > 0
+    ? formData.damagePredictions
+    : formData.roboflowResults ? [] : FALLBACK_DAMAGE
 
   const date = new Date(formData.timestamp)
   const dateStr = date.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -57,12 +60,13 @@ export default function ReviewPage({ formData, userProfile }) {
             className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide"
           >
             {formData.photos.map((photo, i) => (
-              <img
-                key={i}
-                src={photo}
-                alt={`Photo ${i + 1}`}
-                className="w-20 h-20 rounded-xl object-cover shrink-0 border border-white/10"
-              />
+              <button key={i} onClick={() => setViewerImage(photo)} className="shrink-0 cursor-pointer">
+                <img
+                  src={photo}
+                  alt={`Photo ${i + 1}`}
+                  className="w-20 h-20 rounded-xl object-cover border border-white/10 hover:border-white/30 transition-colors"
+                />
+              </button>
             ))}
           </motion.div>
         )}
@@ -75,24 +79,55 @@ export default function ReviewPage({ formData, userProfile }) {
           className="bg-white/[0.03] rounded-2xl p-4 border border-white/5"
         >
           <p className="text-xs font-semibold text-white/40 uppercase tracking-widest mb-1">Damage Detected</p>
-          <div className="flex items-center gap-2 mb-3">
-            <span className="text-xs text-white/40">Severity:</span>
-            <span className="px-3 py-1 bg-severity-medium/20 text-severity-medium text-xs font-bold rounded-full">
-              Medium
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {MOCK_DAMAGE.map((tag) => (
-              <span
-                key={tag.label}
-                className="px-2.5 py-1 bg-white/5 border border-white/10 text-white/70 text-xs rounded-full flex items-center gap-1.5"
-              >
-                {tag.label}
-                <span className="text-brand-light text-[10px]">{tag.confidence}%</span>
-              </span>
-            ))}
-          </div>
+          {damageItems.length > 0 ? (
+            <>
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-xs text-white/40">Detections:</span>
+                <span className="px-3 py-1 bg-brand/20 text-brand-light text-xs font-bold rounded-full">
+                  {damageItems.length} found
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {damageItems.map((tag, idx) => (
+                  <span
+                    key={`${tag.label}-${idx}`}
+                    className="px-2.5 py-1 bg-white/5 border border-white/10 text-white/70 text-xs rounded-full flex items-center gap-1.5"
+                  >
+                    {tag.label}
+                    {tag.confidence > 0 && (
+                      <span className="text-brand-light text-[10px]">{tag.confidence}%</span>
+                    )}
+                  </span>
+                ))}
+              </div>
+            </>
+          ) : (
+            <p className="text-white/40 text-sm">No AI analysis available</p>
+          )}
         </motion.div>
+
+        {/* Annotated images */}
+        {formData.annotatedImages?.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.12 }}
+            className="bg-white/[0.03] rounded-2xl p-4 border border-white/5"
+          >
+            <p className="text-xs font-semibold text-white/40 uppercase tracking-widest mb-3">AI Annotations</p>
+            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+              {formData.annotatedImages.map((img, i) => (
+                <button key={i} onClick={() => setViewerImage(img)} className="shrink-0 cursor-pointer group">
+                  <img
+                    src={img}
+                    alt={`Annotated ${i + 1}`}
+                    className="w-28 h-28 rounded-xl object-cover border border-brand/20 group-hover:border-brand/50 transition-colors"
+                  />
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        )}
 
         {/* Fault status */}
         <motion.div
@@ -129,11 +164,19 @@ export default function ReviewPage({ formData, userProfile }) {
           <p className="text-xs font-semibold text-white/40 uppercase tracking-widest mb-1">Vehicles</p>
           <InfoRow label="Your vehicle" value={`${v.color} ${v.make} ${v.model}`} />
           <InfoRow label="Your plate" value={formData.vehicleRego} />
-          {formData.otherVehicleRego && (
+          {(formData.otherVehicleRego || formData.otherVehicleMake) && (
             <>
               <div className="border-t border-white/5 my-1" />
-              <InfoRow label="Other plate" value={formData.otherVehicleRego} />
-              {formData.otherVehicleColor && (
+              {formData.otherVehicleMake && (
+                <InfoRow
+                  label="Other vehicle"
+                  value={[formData.otherVehicleColor, formData.otherVehicleMake, formData.otherVehicleModel].filter(Boolean).join(' ')}
+                />
+              )}
+              {formData.otherVehicleRego && (
+                <InfoRow label="Other plate" value={formData.otherVehicleRego} />
+              )}
+              {formData.otherVehicleColor && !formData.otherVehicleMake && (
                 <InfoRow label="Other color" value={formData.otherVehicleColor} />
               )}
             </>
@@ -151,7 +194,12 @@ export default function ReviewPage({ formData, userProfile }) {
           <InfoRow label="Type" value={formData.incidentType} />
           <InfoRow label="Date" value={dateStr} />
           <InfoRow label="Time" value={timeStr} />
-          <InfoRow label="Location" value={`${formData.location.lat.toFixed(4)}, ${formData.location.lng.toFixed(4)}`} />
+          {formData.location.address && (
+            <InfoRow label="Location" value={formData.location.address} />
+          )}
+          {formData.location.lat && (
+            <InfoRow label="Coordinates" value={`${formData.location.lat.toFixed(5)}, ${formData.location.lng.toFixed(5)}`} />
+          )}
           {formData.description && (
             <div className="pt-2 border-t border-white/5 mt-2">
               <p className="text-white/40 text-xs mb-1">Description</p>
@@ -192,6 +240,41 @@ export default function ReviewPage({ formData, userProfile }) {
           </button>
         </div>
       </div>
+
+      <AnimatePresence>
+        {viewerImage && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setViewerImage(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+              className="relative max-w-full max-h-full"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <img
+                src={viewerImage}
+                alt="Full size"
+                className="max-w-full max-h-[85vh] rounded-2xl object-contain"
+              />
+              <button
+                onClick={() => setViewerImage(null)}
+                className="absolute top-3 right-3 w-10 h-10 bg-black/60 backdrop-blur-sm rounded-full flex items-center justify-center cursor-pointer hover:bg-black/80 transition-colors"
+              >
+                <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   )
 }

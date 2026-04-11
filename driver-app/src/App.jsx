@@ -7,7 +7,8 @@ import ProcessingPage from './pages/ProcessingPage'
 import IncidentFormPage from './pages/IncidentFormPage'
 import ReviewPage from './pages/ReviewPage'
 import ConfirmationPage from './pages/ConfirmationPage'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import useGeolocation from './hooks/useGeolocation'
 
 const USER_PROFILE = {
   name: 'Geoffrey Ludlow',
@@ -17,7 +18,7 @@ const USER_PROFILE = {
     make: 'Toyota',
     model: 'HiLux',
     year: '2022',
-    color: 'White',
+    color: 'Silver',
   },
   policyNumber: 'NTI-FL-00482917',
 }
@@ -33,17 +34,32 @@ const initialFormData = {
   policyNumber: USER_PROFILE.policyNumber,
   otherVehicleRego: '',
   otherVehicleColor: '',
+  otherVehicleMake: '',
+  otherVehicleModel: '',
   atFault: null,
   incidentType: '',
   description: '',
   photos: [],
-  location: { lat: -33.8688, lng: 151.2093 },
+  roboflowResults: null,
+  annotatedImages: [],
+  damagePredictions: [],
+  location: { lat: null, lng: null, address: null },
   timestamp: new Date().toISOString(),
 }
 
 export default function App() {
   const [formData, setFormData] = useState(initialFormData)
   const location = useLocation()
+  const geo = useGeolocation()
+
+  useEffect(() => {
+    if (geo.status === 'success') {
+      setFormData((prev) => ({
+        ...prev,
+        location: { lat: geo.lat, lng: geo.lng, address: geo.address },
+      }))
+    }
+  }, [geo.status, geo.lat, geo.lng, geo.address])
 
   const updateFormData = (fields) => {
     setFormData((prev) => ({ ...prev, ...fields }))
@@ -57,10 +73,10 @@ export default function App() {
     <div className="min-h-[100dvh] flex flex-col bg-navy max-w-md mx-auto relative overflow-hidden">
       <AnimatePresence mode="wait">
         <Routes location={location} key={location.pathname}>
-          <Route path="/" element={<WelcomePage userProfile={USER_PROFILE} />} />
+          <Route path="/" element={<WelcomePage userProfile={USER_PROFILE} geo={geo} />} />
           <Route
             path="/fault"
-            element={<FaultPage formData={formData} updateFormData={updateFormData} />}
+            element={<FaultPage formData={formData} updateFormData={updateFormData} userProfile={USER_PROFILE} />}
           />
           <Route
             path="/camera"
@@ -68,7 +84,7 @@ export default function App() {
           />
           <Route
             path="/processing"
-            element={<ProcessingPage formData={formData} updateFormData={updateFormData} />}
+            element={<ProcessingPage formData={formData} updateFormData={updateFormData} userProfile={USER_PROFILE} />}
           />
           <Route
             path="/details"
@@ -80,7 +96,7 @@ export default function App() {
           />
           <Route
             path="/confirmation"
-            element={<ConfirmationPage resetForm={resetForm} />}
+            element={<ConfirmationPage resetForm={resetForm} formData={formData} />}
           />
         </Routes>
       </AnimatePresence>

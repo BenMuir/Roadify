@@ -1,9 +1,9 @@
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
+import LocationMap from '../components/LocationMap'
 
-export default function WelcomePage({ userProfile }) {
+export default function WelcomePage({ userProfile, geo }) {
   const navigate = useNavigate()
-  const v = userProfile.vehicle
 
   return (
     <motion.div
@@ -57,19 +57,27 @@ export default function WelcomePage({ userProfile }) {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.6 }}
-          className="bg-white/5 backdrop-blur-sm rounded-2xl px-5 py-3.5 border border-white/10 w-full"
+          className="w-full rounded-2xl overflow-hidden border border-white/10"
         >
-          <p className="text-white/40 text-xs uppercase tracking-widest mb-2">Your Vehicle</p>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-white font-semibold">{v.year} {v.make} {v.model}</p>
-              <p className="text-white/50 text-sm">{v.color} &middot; {v.rego}</p>
-            </div>
-            <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center">
-              <svg className="w-5 h-5 text-white/50" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-              </svg>
-            </div>
+          <div className="h-[200px]">
+            {geo.status === 'success' ? (
+              <LocationMap lat={geo.lat} lng={geo.lng} address={geo.address} />
+            ) : geo.status === 'loading' ? (
+              <div className="h-full bg-white/5 flex flex-col items-center justify-center gap-2 rounded-2xl">
+                <div className="w-5 h-5 border-2 border-brand-light border-t-transparent rounded-full animate-spin" />
+                <p className="text-white/40 text-xs">Getting your location...</p>
+              </div>
+            ) : (
+              <div className="h-full bg-white/5 flex flex-col items-center justify-center gap-2 rounded-2xl">
+                <svg className="w-6 h-6 text-white/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
+                </svg>
+                <p className="text-white/40 text-xs">
+                  {geo.status === 'denied' ? 'Location access denied' : 'Location unavailable'}
+                </p>
+              </div>
+            )}
           </div>
         </motion.div>
       </div>

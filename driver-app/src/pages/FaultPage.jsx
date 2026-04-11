@@ -1,8 +1,9 @@
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 
-export default function FaultPage({ formData, updateFormData }) {
+export default function FaultPage({ formData, updateFormData, userProfile }) {
   const navigate = useNavigate()
+  const v = userProfile.vehicle
 
   const handleSelect = (value) => {
     updateFormData({ atFault: value })
@@ -32,15 +33,38 @@ export default function FaultPage({ formData, updateFormData }) {
         <div className="w-10" />
       </div>
 
-      <div className="flex-1 flex flex-col items-center justify-center px-6 gap-8">
+      <div className="flex-1 flex flex-col px-6 pt-2 pb-6 gap-5">
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="bg-white/[0.03] rounded-2xl p-4 border border-white/5"
+        >
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-white/40 uppercase tracking-widest">Your Vehicle</p>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-white/50 font-medium">From profile</span>
+          </div>
+          <div className="flex items-center gap-3 mt-3">
+            <div className="w-12 h-12 bg-brand/15 rounded-xl flex items-center justify-center">
+              <svg className="w-6 h-6 text-brand-light" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 00-3.213-9.193 2.056 2.056 0 00-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 00-10.026 0 1.106 1.106 0 00-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-white font-semibold text-sm">{v.year} {v.make} {v.model}</p>
+              <p className="text-white/40 text-xs">{v.color} &middot; {v.rego}</p>
+            </div>
+          </div>
+        </motion.div>
+
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
+          transition={{ delay: 0.15 }}
           className="text-center"
         >
           <h2 className="text-2xl font-bold text-white">Were you at fault?</h2>
-          <p className="text-white/40 text-sm mt-2">This helps us process your claim faster</p>
+          <p className="text-white/40 text-sm mt-1">This helps us process your claim faster</p>
         </motion.div>
 
         <motion.div
@@ -89,13 +113,15 @@ export default function FaultPage({ formData, updateFormData }) {
           </button>
         </motion.div>
 
+        <div className="flex-1" />
+
         <motion.button
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
           whileTap={{ scale: 0.97 }}
           onClick={() => navigate('/camera')}
-          className="w-full bg-brand hover:bg-brand-dark text-white font-bold py-4 rounded-2xl shadow-xl shadow-brand/25 transition-all text-lg cursor-pointer flex items-center justify-center gap-3 mt-2"
+          className="w-full bg-brand hover:bg-brand-dark text-white font-bold py-4 rounded-2xl shadow-xl shadow-brand/25 transition-all text-lg cursor-pointer flex items-center justify-center gap-3"
         >
           <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
