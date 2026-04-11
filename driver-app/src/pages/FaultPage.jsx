@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useState } from 'react'
+import AppHeader from '../components/AppHeader'
 
 
 function ChoiceButton({ selected, onClick, children, variant = 'default' }) {
@@ -66,20 +67,10 @@ export default function FaultPage({ formData, updateFormData, userProfile }) {
       transition={{ duration: 0.3 }}
       className="flex-1 flex flex-col min-h-[100dvh] bg-navy"
     >
-      <div className="px-5 pt-5 pb-3 flex items-center justify-between">
-        <button
-          onClick={() => navigate('/')}
-          className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center cursor-pointer hover:bg-white/15 transition-colors"
-        >
-          <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-          </svg>
-        </button>
-        <div className="text-center">
-          <p className="text-white/40 text-xs font-medium uppercase tracking-widest">Step 1</p>
-          <p className="text-white font-semibold text-sm">Incident Details</p>
-        </div>
-        <div className="w-10" />
+      <AppHeader backTo="/" />
+      <div className="px-6 pb-3">
+        <p className="text-brand-light/60 text-xs font-semibold uppercase tracking-widest mb-1">Step 1 of 3</p>
+        <h2 className="text-2xl font-extrabold text-white">Incident Details</h2>
       </div>
 
       <div className="flex-1 flex flex-col px-6 pt-2 pb-6 gap-5 overflow-y-auto">
@@ -275,25 +266,30 @@ export default function FaultPage({ formData, updateFormData, userProfile }) {
 
         <div className="flex-1" />
 
-        <motion.button
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
-          whileTap={{ scale: 0.97 }}
-          onClick={() => navigate('/camera')}
-          disabled={formData.thirdPartyInvolved === null}
-          className={`w-full font-bold py-4 rounded-2xl shadow-xl transition-all text-lg cursor-pointer flex items-center justify-center gap-3 ${
-            formData.thirdPartyInvolved !== null
-              ? 'bg-brand hover:bg-brand-dark text-white shadow-brand/25'
-              : 'bg-white/5 text-white/30 cursor-not-allowed shadow-none'
-          }`}
+          className="flex items-center gap-3"
         >
-          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
-            <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0z" />
-          </svg>
-          Next: Take Photos
-        </motion.button>
+          <button
+            onClick={() => navigate('/')}
+            className="px-5 py-3.5 rounded-2xl text-sm font-semibold text-white/50 hover:bg-white/5 transition-colors cursor-pointer"
+          >
+            Save Draft
+          </button>
+          <button
+            onClick={() => navigate('/camera')}
+            disabled={formData.thirdPartyInvolved === null}
+            className={`flex-1 font-bold py-3.5 rounded-2xl shadow-lg transition-all text-base cursor-pointer ${
+              formData.thirdPartyInvolved !== null
+                ? 'bg-brand hover:bg-brand-dark text-white shadow-brand/25'
+                : 'bg-white/5 text-white/30 cursor-not-allowed shadow-none'
+            }`}
+          >
+            Next
+          </button>
+        </motion.div>
       </div>
     </motion.div>
   )

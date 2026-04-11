@@ -26,7 +26,7 @@ export default function ProcessingPage({ formData, updateFormData, userProfile }
     async function processPhotos() {
       try {
         setCurrentStep(0)
-        await delay(600)
+        await delay(300)
 
         setCurrentStep(1)
         const roboflowPromise = runWorkflowOnPhotos(formData.photos, (completed, total) => {
@@ -46,8 +46,8 @@ export default function ProcessingPage({ formData, updateFormData, userProfile }
           color: formData.vehicleColor,
         }
         const slotLabels = {
-          front: 'Front', rear: 'Rear', left: 'Left Side',
-          right: 'Right Side', closeup: 'Close-up', wide: 'Wide Shot',
+          front: 'Front of Vehicle', rear: 'Rear of Vehicle', closeup: 'Damage Close-Up',
+          plate: 'Number Plate', wide: 'Wide Scene Shot', other: 'Other Angle',
         }
         const photoSlots = formData.photoSlots || {}
         const slotKeys = Object.keys(photoSlots)
@@ -58,7 +58,7 @@ export default function ProcessingPage({ formData, updateFormData, userProfile }
         const [results, openaiResult] = await Promise.all([roboflowPromise, openaiPromise])
 
         setCurrentStep(3)
-        await delay(400)
+        await delay(200)
 
         const { predictions, annotatedImages } = extractPredictions(results)
 
@@ -85,7 +85,7 @@ export default function ProcessingPage({ formData, updateFormData, userProfile }
         setCurrentStep(4)
         updateFormData(formUpdate)
 
-        await delay(600)
+        await delay(300)
         setDone(true)
       } catch (err) {
         console.error('Processing failed:', err)

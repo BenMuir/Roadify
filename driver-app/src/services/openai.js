@@ -62,7 +62,7 @@ IMPORTANT:
 - The claimant's vehicle is the ${vehicle.color} ${vehicle.make} ${vehicle.model} — do NOT report its details as the "other" vehicle.
 - Photos may show EACH vehicle SEPARATELY — the user may have taken close-ups of their own car in some photos and the other vehicle in different photos. Analyze ALL photos collectively to build a complete picture, not each photo in isolation.
 - A photo showing only one vehicle does NOT mean there is no other vehicle involved — check other photos in the set.
-- Each photo may have a label like [Photo: Front] or [Photo: Close-up]. These are SUGGESTED slots the user chose — they are approximate guidelines, not strict descriptions. The user may not fill all slots, and the actual photo content may not perfectly match the label. Always rely on what you SEE in the image, not just the label.
+- Photos are numbered (Photo 1, Photo 2, etc.) but have NO meaningful labels. The user took them in random order. Rely ONLY on what you SEE in each image.
 - If you cannot determine a field, return an empty string for that field.
 - For the rego plate, only include it if you can read it with reasonable confidence.
 ${thirdParty === false ? '- This is a single-vehicle incident. The description should focus on the object hit and resulting damage.\n' : ''}
@@ -121,19 +121,29 @@ Incident Context: ${contextLines.join('; ') || 'None'}
 AI Description: ${formData.description || 'None'}
 Photos submitted: ${photoCount} of 6 slots used (slots: ${slotKeys.join(', ') || 'none'})
 ML Damage Detections:
-${damage || 'No detections'}
+${damage || 'No ML detections — the automated damage detection model did NOT identify any damage. This does NOT necessarily mean there is no damage; rely on your own visual analysis of the photos. However, if you also see no obvious damage in the photos, note this discrepancy with the claim.'}
 --- END ---
 
-${photoCount > 0 ? `I am also attaching ${Math.min(photoCount, 3)} original photos from the claim. Examine them carefully for BOTH the incident report AND the fraud analysis.` : ''}
+${photoCount > 0 ? `I am attaching ${Math.min(photoCount, 3)} original photos from the claim, numbered Photo 1, Photo 2, etc. Photos are in no particular order. You MUST examine EVERY photo carefully. When making observations, reference the photo number (e.g. "Photo 1", "Photo 3").` : ''}
 
-IMPORTANT — INFER FROM PHOTOS:
-You must examine the photos and infer the following context clues. Report these in the "scene_assessment" field:
-- Road surface type (sealed, gravel, dirt, wet, dry) — visible in the photos
-- Approximate impact severity from damage patterns (low-speed vs high-speed)
-- Whether a second vehicle is visible in ANY of the photos
-- Weather conditions visible (clear sky, overcast, rain, wet ground)
-- Presence of debris, skid marks, or scene disturbance
-- Whether the vehicle appears parked or was in motion (position on road, angle, surroundings)
+CRITICAL — PER-PHOTO ANALYSIS:
+Analyse EACH photo individually AND then collectively. For each photo, note:
+1. What vehicle(s) appear — colour, make, damage visible
+2. The BACKGROUND of each photo — road surface, weather, lighting, surroundings, time of day
+3. Whether the backgrounds across different photos are CONSISTENT with each other
+
+KEY RULES FOR MULTI-PHOTO CLAIMS:
+- Different photos may show DIFFERENT vehicles from the SAME incident. Photo 1 might show the claimant's car, Photo 2 might show the other car. This is NORMAL — do not treat separate cars in separate photos as "no second vehicle".
+- "second_vehicle_visible" should be true if ANY photo shows a vehicle other than the claimant's.
+- Compare backgrounds across ALL photos. If Photo 1 shows a dry sunny road and Photo 2 shows snow/ice on the ground, that is a MAJOR inconsistency — these photos were likely taken at different times/places.
+- Look at the ENTIRE frame of each photo, not just the car. The background, ground, sky, and surroundings are critical evidence.
+
+WEATHER CROSS-CHECK:
+Local weather was recorded at the GPS location when the claim was submitted.
+- Local weather: ${weather ? weather.condition + ', ' + weather.temperature + '°C, wind ' + weather.windSpeed + ' km/h' : 'unavailable'}
+- Compare this CAREFULLY against what you see in EACH photo.
+- If local weather says "clear, 20°C" but a photo shows snow on the road, ice, or heavy rain — set weather_match=false and explain the discrepancy.
+- If photos show different weather conditions from each other (e.g. one dry, one snowy), that is HIGHLY suspicious regardless of the API data.
 
 Respond ONLY with valid JSON using ALL these keys:
 {
@@ -145,11 +155,11 @@ Respond ONLY with valid JSON using ALL these keys:
   "liability_assessment": "Brief preliminary liability opinion",
   "estimated_repair_class": "minor_cosmetic | moderate_panel | major_structural | total_loss",
   "scene_assessment": {
-    "inferred_road_surface": "What the road looks like in photos (e.g. dry sealed road, wet bitumen, gravel)",
-    "inferred_weather_visible": "What the weather looks like in photos (e.g. clear, overcast, wet ground)",
+    "inferred_road_surface": "Describe the road surface visible across photos. If it differs between photos, note that explicitly.",
+    "inferred_weather_visible": "Describe weather/conditions visible in the photos. If different photos show different conditions, flag this.",
     "weather_api": "${weather ? weather.condition + ', ' + weather.temperature + '°C' : 'unavailable'}",
     "weather_match": true,
-    "weather_match_note": "Does the API weather match what is visible in the photos? Note any discrepancy.",
+    "weather_match_note": "Compare local weather data vs EVERY photo. If ANY photo contradicts the weather (e.g. snow visible but weather says clear), set weather_match to false and explain.",
     "second_vehicle_visible": false,
     "debris_or_skid_marks": false,
     "inferred_speed_category": "low | moderate | high (based on damage patterns and scene)",
@@ -160,11 +170,11 @@ Respond ONLY with valid JSON using ALL these keys:
     "risk_level": "low | medium | high",
     "environment_consistency": {
       "flag": false,
-      "note": "Are the backgrounds, lighting, road surface, and surroundings consistent across all photos? Does the scene look like the same location and time? If only 1 photo, note that consistency cannot be verified."
+      "note": "Compare the BACKGROUND of every photo — road surface, lighting, weather, surroundings, time of day. Are they consistent? If one photo shows dry sunny road and another shows snow or rain, flag=true. If backgrounds differ (different locations, different times), flag=true."
     },
     "damage_vs_scene": {
       "flag": false,
-      "note": "Does the environment match the damage severity? E.g. major collision but clean road with no debris or skid marks? Does the damage orientation make physical sense? Does inferred speed match damage extent?"
+      "note": "Does the environment match the damage severity? Major collision but clean road with no debris or skid marks? Does the damage orientation make physical sense? Does inferred speed match damage extent?"
     },
     "damage_plausibility": {
       "flag": false,
@@ -173,65 +183,158 @@ Respond ONLY with valid JSON using ALL these keys:
     "photo_coverage": {
       "photos_submitted": ${photoCount},
       "flag": false,
-      "note": "How thoroughly was the incident documented? More photos = more verifiable. 1 photo limits what can be assessed. This is not suspicious on its own, just a data point."
+      "note": "How thoroughly was the incident documented? More photos = more verifiable. 1 photo limits what can be assessed. Not suspicious on its own."
     },
     "claim_coherence": {
       "flag": false,
-      "note": "Do all the claim details tell a coherent story? Does the claimant say third party involved but no second car visible? Does the weather API match the scene? Do all details align?"
+      "note": "Do all details tell a coherent story? Does weather API match the scene? If claimant says third party involved and other driver left, it is reasonable for the other car not to be in photos. But if backgrounds differ between photos, that undermines coherence."
     },
     "indicators": ["array of specific observations — only include genuine concerns, leave empty if nothing suspicious"]
-  }
+  },
+  "photo_references": [
+    {
+      "photo": "Photo 1",
+      "observation": "What you observed in this specific photo that is noteworthy — damage, background detail, weather inconsistency, etc.",
+      "type": "damage | fraud_concern | scene_context | weather_mismatch"
+    }
+  ]
 }
 
+PHOTO REFERENCES:
+- Include a photo_references entry ONLY when you have a specific noteworthy observation about a particular photo.
+- Do NOT reference every photo — only when there is something important to highlight (e.g. visible damage, weather inconsistency, suspicious background, key evidence).
+- Use the "type" field to categorise: "damage" for damage observations, "fraud_concern" for inconsistencies, "scene_context" for useful scene details, "weather_mismatch" for weather discrepancies.
+- The dashboard will display the referenced photo inline next to the observation so the claims agent can see exactly what you mean.
+
+INLINE PHOTO MENTIONS:
+- When writing text fields (severity_narrative, visible_damage_notes, liability_assessment, scene_assessment notes, fraud_analysis notes), MENTION the specific photo by its label (e.g. "Photo 1", "Photo 3") whenever you describe something visible in a particular image.
+- Example: "The front bumper of the Kia is severely crushed (Photo 2), while Photo 1 shows minor scraping on the Toyota's passenger side."
+- This lets the dashboard create clickable photo links inline within the report text.
+- Every photo mentioned inline should also have a corresponding entry in photo_references.
+
 FRAUD ANALYSIS GUIDELINES:
-- Set flag=true ONLY when something is genuinely inconsistent, not merely incomplete.
-- Having few photos is a data gap, not fraud. Note it factually without assuming bad intent.
-- Close-up photos are normal and expected — not suspicious.
-- Focus on: Does the ENVIRONMENT match the DAMAGE? Does the STORY match the EVIDENCE?
-- Use the weather API data to cross-reference with visible conditions in photos. If API says rain but photos show bone-dry road and clear sky, that is notable.
-- If claimant says another vehicle was involved but no second vehicle appears in ANY photo AND other driver has left, that is context not fraud — they may have left before photos.
-- Infer speed from damage: minor scratches = low speed, crumpled panels = moderate, structural deformation = high speed. Does the scene show evidence consistent with that speed (debris, skid marks)?
-- Be fair and evidence-based. Most claims are legitimate. Only flag real inconsistencies.`
+- Set flag=true when something is genuinely INCONSISTENT across photos or between photos and claim data.
+- BACKGROUND ANALYSIS IS CRITICAL: Snow in one photo + dry road in another = flag. Different locations across photos = flag. Different lighting/time of day = flag.
+- Weather cross-check: If local weather says clear/warm but photos show snow, ice, or heavy rain — that MUST be flagged in both weather_match AND environment_consistency.
+- Having few photos is a data gap, not fraud. Note factually.
+- Close-up photos are normal — not suspicious.
+- Different vehicles in different photos is NORMAL in multi-vehicle incidents. Each photo may show a different car.
+- Infer speed from damage: scratches = low, crumpled panels = moderate, structural = high. Does the scene match?
+- Be fair and evidence-based. Most claims are legitimate. But be THOROUGH with background analysis.
 
-  const messages = [
-    { role: 'system', content: 'You are a fleet/motor-claims analyst and fraud investigator. Respond ONLY with valid JSON.' },
-    { role: 'user', content: [] },
-  ]
+SINGLE-VEHICLE / NO THIRD PARTY CONTEXT:
+- When the claimant reports NO other vehicle was involved, the incident may have occurred in a garage, driveway, carpark, or private property — NOT necessarily on a public road.
+- Indoor or covered locations (garage, carport, underground parking) are completely normal for single-vehicle incidents (e.g. scraping a pillar, reversing into a wall).
+- Do NOT flag a non-street background as suspicious when no third party is involved. The location only becomes suspicious if it contradicts other claim details.
+- Focus fraud analysis on damage plausibility and consistency, not on whether the scene "looks like a road".`
 
-  messages[1].content.push({ type: 'text', text: prompt })
+  const inputContent = []
+  inputContent.push({ type: 'input_text', text: prompt })
 
-  // Attach up to 3 original photos for visual fraud analysis
   const photosToAttach = slotKeys.slice(0, 3)
-  for (const slot of photosToAttach) {
+  for (let i = 0; i < photosToAttach.length; i++) {
+    const slot = photosToAttach[i]
     if (photoSlots[slot]) {
+      inputContent.push({ type: 'input_text', text: `[Photo ${i + 1}]` })
       const resized = await resizeForVision(photoSlots[slot])
-      messages[1].content.push({
-        type: 'image_url',
-        image_url: { url: resized, detail: 'low' },
+      inputContent.push({
+        type: 'input_image',
+        image_url: resized,
+        detail: 'auto',
       })
     }
   }
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${API_KEY}` },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        max_tokens: 2000,
-        temperature: 0.2,
-        response_format: { type: 'json_object' },
-        messages,
+        model: 'gpt-5.4',
+        instructions: 'You are a fleet/motor-claims analyst and fraud investigator. Respond ONLY with valid JSON.',
+        input: [{ role: 'user', content: inputContent }],
+        text: { format: { type: 'json_object' } },
       }),
     })
 
-    if (!response.ok) return null
+    if (!response.ok) {
+      const errText = await response.text()
+      console.error('[OpenAI] Report error:', errText.slice(0, 300))
+      return null
+    }
     const result = await response.json()
-    const content = result.choices?.[0]?.message?.content
+    const content = result.output?.find(o => o.type === 'message')?.content?.find(c => c.type === 'output_text')?.text
     if (!content) return null
     return JSON.parse(content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim())
   } catch (e) {
     console.error('[OpenAI] Report generation failed:', e)
+    return null
+  }
+}
+
+export async function evaluatePhotoCoverage(photoDataUrls, vehicle, incidentContext, signal) {
+  if (!API_KEY || photoDataUrls.length === 0) return null
+
+  const resized = await Promise.all(photoDataUrls.map(resizeForVision))
+
+  const ctx = incidentContext || {}
+  const thirdParty = ctx.thirdPartyInvolved
+
+  const prompt = `You are a photo coach helping a driver document a vehicle incident for insurance. Help them capture thorough evidence so their claim goes smoothly.
+
+Vehicle: ${vehicle.color} ${vehicle.year} ${vehicle.make} ${vehicle.model} (plate: ${vehicle.rego})
+${thirdParty ? 'Another vehicle is involved.' : 'Single-vehicle incident.'}
+
+The driver has taken ${photoDataUrls.length} photo(s) so far (max 6). Evaluate coverage and suggest what's missing.
+
+Check for:
+- Wide/scene shot showing the road, surroundings, and context (NOT just the car close-up)
+- Front of vehicle
+- Rear of vehicle
+- Side view(s)
+- Close-up of specific damage
+- License plate(s) clearly readable
+${thirdParty ? '- Other vehicle captured\n- Both vehicles in one frame showing relative positions' : '- What was hit (pole, barrier, kerb, object, etc.)'}
+
+Return ONLY JSON:
+{
+  "captured": ["short labels of what is covered"],
+  "topSuggestion": "Single friendly sentence — the MOST important photo to take next. Empty string if coverage looks solid.",
+  "additionalTips": ["0-2 more optional suggestions"],
+  "coverageScore": 3
+}
+coverageScore: 1=very incomplete, 2=missing key angles, 3=decent but could improve, 4=good coverage, 5=excellent/thorough.`
+
+  const inputContent = [{ type: 'input_text', text: prompt }]
+  resized.forEach((url, i) => {
+    inputContent.push({ type: 'input_text', text: `[Photo ${i + 1}]` })
+    inputContent.push({ type: 'input_image', image_url: url, detail: 'low' })
+  })
+
+  try {
+    const response = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        input: [{ role: 'user', content: inputContent }],
+        text: { format: { type: 'json_object' } },
+      }),
+      signal,
+    })
+
+    if (!response.ok) return null
+    const result = await response.json()
+    const text = result.output?.find((o) => o.type === 'message')
+      ?.content?.find((c) => c.type === 'output_text')?.text
+    if (!text) return null
+    return JSON.parse(text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim())
+  } catch (e) {
+    if (e.name === 'AbortError') return null
+    console.error('[OpenAI] Coverage check failed:', e)
     return null
   }
 }
@@ -243,48 +346,34 @@ export async function analyzeIncidentPhotos(photos, vehicle, incidentContext, ph
   }
 
   const toProcess = photos.slice(0, 6)
-  const labels = photoLabels ? photoLabels.slice(0, 6) : []
   const resizedPhotos = await Promise.all(toProcess.map(resizeForVision))
 
-  const imageMessages = []
+  const inputContent = [
+    { type: 'input_text', text: buildPrompt(vehicle, incidentContext) },
+  ]
   resizedPhotos.forEach((dataUrl, i) => {
-    if (labels[i]) {
-      imageMessages.push({ type: 'text', text: `[Photo: ${labels[i]}]` })
-    }
-    imageMessages.push({
-      type: 'image_url',
-      image_url: { url: dataUrl, detail: 'high' },
+    inputContent.push({ type: 'input_text', text: `[Photo ${i + 1}]` })
+    inputContent.push({
+      type: 'input_image',
+      image_url: dataUrl,
+      detail: 'auto',
     })
   })
 
-  const body = {
-    model: 'gpt-4o',
-    max_tokens: 500,
-    temperature: 0.1,
-    messages: [
-      {
-        role: 'system',
-        content: 'You are a vehicle incident analyst. You respond only with valid JSON.',
-      },
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: buildPrompt(vehicle, incidentContext) },
-          ...imageMessages,
-        ],
-      },
-    ],
-  }
-
   console.log('[OpenAI] Sending analysis request with', resizedPhotos.length, 'photos')
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${API_KEY}`,
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      model: 'gpt-4o-mini',
+      instructions: 'You are a vehicle incident analyst. You respond only with valid JSON.',
+      input: [{ role: 'user', content: inputContent }],
+      text: { format: { type: 'json_object' } },
+    }),
   })
 
   if (!response.ok) {
@@ -294,7 +383,7 @@ export async function analyzeIncidentPhotos(photos, vehicle, incidentContext, ph
   }
 
   const result = await response.json()
-  const content = result.choices?.[0]?.message?.content
+  const content = result.output?.find(o => o.type === 'message')?.content?.find(c => c.type === 'output_text')?.text
 
   if (!content) {
     console.error('[OpenAI] Empty response')

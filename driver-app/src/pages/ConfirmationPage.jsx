@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { useState } from 'react'
 
 export default function ConfirmationPage({ resetForm, formData }) {
@@ -7,10 +7,7 @@ export default function ConfirmationPage({ resetForm, formData }) {
   const refNumber = formData?.claimId
     ? formData.claimId.slice(0, 8).toUpperCase()
     : `RD-${Date.now().toString(36).toUpperCase().slice(-6)}`
-  const [viewerImage, setViewerImage] = useState(null)
-
-  const annotatedImages = formData?.annotatedImages || []
-  const predictions = formData?.damagePredictions || []
+  const [copied, setCopied] = useState(false)
 
   const handleDone = () => {
     resetForm()
@@ -20,6 +17,12 @@ export default function ConfirmationPage({ resetForm, formData }) {
   const handleAnother = () => {
     resetForm()
     navigate('/camera')
+  }
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(refNumber).catch(() => {})
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
   }
 
   return (
@@ -39,12 +42,14 @@ export default function ConfirmationPage({ resetForm, formData }) {
           transition={{ type: 'spring', stiffness: 200, damping: 12, delay: 0.2 }}
           className="relative"
         >
-          <div className="w-24 h-24 bg-severity-minor rounded-full flex items-center justify-center shadow-2xl shadow-severity-minor/30">
-            <svg className="w-12 h-12 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-            </svg>
+          <div className="w-24 h-24 bg-brand/20 rounded-full flex items-center justify-center">
+            <div className="w-16 h-16 bg-brand/30 rounded-full flex items-center justify-center">
+              <svg className="w-8 h-8 text-brand-light" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+              </svg>
+            </div>
           </div>
-          <div className="absolute -inset-4 bg-severity-minor/15 rounded-full animate-pulse-ring -z-10" />
+          <div className="absolute -inset-4 bg-brand/10 rounded-full animate-pulse-ring -z-10" />
         </motion.div>
 
         <motion.div
@@ -63,80 +68,28 @@ export default function ConfirmationPage({ resetForm, formData }) {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.6 }}
-          className="bg-white/[0.03] border border-white/10 rounded-2xl px-6 py-4 text-center w-full"
+          className="bg-white/[0.04] border border-white/10 rounded-2xl px-5 py-4 w-full flex items-center justify-between"
         >
-          <p className="text-white/40 text-xs uppercase tracking-widest mb-1">Reference Number</p>
-          <p className="text-2xl font-bold text-white font-mono tracking-widest">{refNumber}</p>
-        </motion.div>
-
-        {/* Annotated images from Roboflow */}
-        {annotatedImages.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.65 }}
-            className="w-full bg-white/[0.03] border border-white/10 rounded-2xl p-4"
+          <div>
+            <p className="text-brand-light text-[10px] font-semibold uppercase tracking-widest mb-0.5">Reference Number</p>
+            <p className="text-xl font-bold text-white font-mono tracking-wider">#{refNumber}</p>
+          </div>
+          <button
+            onClick={handleCopy}
+            className="w-10 h-10 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center cursor-pointer transition-colors"
           >
-            <p className="text-white/40 text-xs uppercase tracking-widest mb-3">AI Damage Analysis</p>
-            {predictions.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mb-3">
-                {predictions.map((p, i) => (
-                  <span
-                    key={i}
-                    className="px-2 py-0.5 bg-brand/15 text-brand-light text-[11px] font-medium rounded-full border border-brand/20"
-                  >
-                    {p.label} {p.confidence > 0 && `${p.confidence}%`}
-                  </span>
-                ))}
-              </div>
+            {copied ? (
+              <svg className="w-5 h-5 text-severity-minor" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5 text-white/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0013.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 01-.75.75H9.75a.75.75 0 01-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 011.927-.184" />
+              </svg>
             )}
-            <div className="flex gap-2.5 overflow-x-auto pb-1 scrollbar-hide">
-              {annotatedImages.map((img, i) => (
-                <button
-                  key={i}
-                  onClick={() => setViewerImage(img)}
-                  className="shrink-0 cursor-pointer group relative"
-                >
-                  <img
-                    src={img}
-                    alt={`Annotated ${i + 1}`}
-                    className="w-24 h-24 rounded-xl object-cover border border-brand/20 group-hover:border-brand/50 transition-colors"
-                  />
-                  <div className="absolute inset-0 rounded-xl bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-                    <svg className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607zM10.5 7.5v6m3-3h-6" />
-                    </svg>
-                  </div>
-                </button>
-              ))}
-            </div>
-            <p className="text-white/30 text-[10px] mt-2">Tap an image to view full size</p>
-          </motion.div>
-        )}
-
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.7 }}
-          className="space-y-3 w-full"
-        >
-          <div className="flex items-center gap-3 bg-white/5 rounded-xl px-4 py-3">
-            <div className="w-8 h-8 rounded-full bg-brand/20 flex items-center justify-center shrink-0">
-              <span className="text-sm">📋</span>
-            </div>
-            <p className="text-white/60 text-xs leading-relaxed">
-              AI damage report is being generated and sent to your insurer
-            </p>
-          </div>
-          <div className="flex items-center gap-3 bg-white/5 rounded-xl px-4 py-3">
-            <div className="w-8 h-8 rounded-full bg-brand/20 flex items-center justify-center shrink-0">
-              <span className="text-sm">🔔</span>
-            </div>
-            <p className="text-white/60 text-xs leading-relaxed">
-              You'll receive a notification when a claims handler reviews your report
-            </p>
-          </div>
+          </button>
         </motion.div>
+
       </div>
 
       <motion.div
@@ -149,51 +102,16 @@ export default function ConfirmationPage({ resetForm, formData }) {
           onClick={handleDone}
           className="w-full bg-brand hover:bg-brand-dark text-white font-bold py-4 rounded-2xl shadow-lg shadow-brand/25 transition-all cursor-pointer text-lg"
         >
-          Done
+          Back To Home
         </button>
         <button
           onClick={handleAnother}
-          className="w-full bg-white/5 text-white/50 hover:text-white/70 font-medium py-3.5 rounded-2xl border border-white/10 hover:bg-white/10 transition-all cursor-pointer"
+          className="w-full text-white/40 font-semibold py-3 hover:text-white/60 transition-colors cursor-pointer text-xs uppercase tracking-widest"
         >
           Report Another Incident
         </button>
       </motion.div>
 
-      {/* Fullscreen image viewer */}
-      <AnimatePresence>
-        {viewerImage && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4"
-            onClick={() => setViewerImage(null)}
-          >
-            <motion.div
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.8, opacity: 0 }}
-              transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-              className="relative max-w-full max-h-full"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <img
-                src={viewerImage}
-                alt="Annotated damage"
-                className="max-w-full max-h-[85vh] rounded-2xl object-contain"
-              />
-              <button
-                onClick={() => setViewerImage(null)}
-                className="absolute top-3 right-3 w-10 h-10 bg-black/60 backdrop-blur-sm rounded-full flex items-center justify-center cursor-pointer hover:bg-black/80 transition-colors"
-              >
-                <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </motion.div>
   )
 }

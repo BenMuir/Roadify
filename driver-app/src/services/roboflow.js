@@ -70,20 +70,23 @@ export async function runWorkflow(imageDataUrl) {
 }
 
 export async function runWorkflowOnPhotos(photos, onProgress) {
-  const results = []
+  let completed = 0
+  const promises = photos.map((photo, i) =>
+    runWorkflow(photo)
+      .then((result) => {
+        completed++
+        onProgress?.(completed, photos.length)
+        return { index: i, success: true, data: result }
+      })
+      .catch((err) => {
+        completed++
+        onProgress?.(completed, photos.length)
+        console.error(`Roboflow error on photo ${i}:`, err)
+        return { index: i, success: false, error: err.message }
+      })
+  )
 
-  for (let i = 0; i < photos.length; i++) {
-    try {
-      const result = await runWorkflow(photos[i])
-      results.push({ index: i, success: true, data: result })
-    } catch (err) {
-      console.error(`Roboflow error on photo ${i}:`, err)
-      results.push({ index: i, success: false, error: err.message })
-    }
-    onProgress?.(i + 1, photos.length)
-  }
-
-  return results
+  return Promise.all(promises)
 }
 
 export function extractPredictions(workflowResults) {

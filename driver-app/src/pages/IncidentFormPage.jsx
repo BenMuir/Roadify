@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
+import AppHeader from '../components/AppHeader'
 
 const INCIDENT_TYPES = [
   { value: '', label: 'Select type...' },
@@ -44,20 +45,11 @@ export default function IncidentFormPage({ formData, updateFormData, userProfile
       transition={{ duration: 0.3 }}
       className="flex-1 flex flex-col min-h-[100dvh] bg-navy"
     >
-      <div className="px-5 pt-5 pb-3 flex items-center justify-between">
-        <button
-          onClick={() => navigate('/camera')}
-          className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center cursor-pointer hover:bg-white/15 transition-colors"
-        >
-          <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-          </svg>
-        </button>
-        <div className="text-center">
-          <p className="text-white/40 text-xs font-medium uppercase tracking-widest">Step 3</p>
-          <p className="text-white font-semibold text-sm">Confirm Details</p>
-        </div>
-        <div className="w-10" />
+      <AppHeader backTo="/camera" />
+      <div className="px-6 pb-3">
+        <p className="text-brand-light/60 text-xs font-semibold uppercase tracking-widest mb-1">Step 2 of 3</p>
+        <h2 className="text-2xl font-extrabold text-white mb-1">Confirm Details</h2>
+        <p className="text-white/40 text-xs leading-relaxed">Review the captured information before final submission.</p>
       </div>
 
       <div className="flex-1 px-5 pb-5 overflow-y-auto">
@@ -208,22 +200,24 @@ export default function IncidentFormPage({ formData, updateFormData, userProfile
           </Field>
         </motion.div>
 
-        <div className="pt-2 pb-2">
-          <motion.button
-            whileTap={{ scale: 0.97 }}
+        <div className="pt-2 pb-2 flex items-center gap-3">
+          <button
+            onClick={() => navigate('/camera')}
+            className="px-5 py-3.5 rounded-2xl text-sm font-semibold text-white/50 hover:bg-white/5 transition-colors cursor-pointer"
+          >
+            Save Draft
+          </button>
+          <button
             onClick={() => canProceed && navigate('/review')}
             disabled={!canProceed}
-            className={`w-full font-bold py-4 rounded-2xl shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2 text-lg ${
+            className={`flex-1 font-bold py-3.5 rounded-2xl shadow-lg transition-all text-base cursor-pointer ${
               canProceed
                 ? 'bg-brand text-white shadow-brand/25 hover:bg-brand-dark'
                 : 'bg-white/5 text-white/30 cursor-not-allowed shadow-none'
             }`}
           >
-            Review Claim
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
-            </svg>
-          </motion.button>
+            Next
+          </button>
         </div>
       </div>
     </motion.div>
