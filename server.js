@@ -128,13 +128,14 @@ app.post('/submit-claim', async (req, res) => {
                 class: d.class || d.label || "",
                 confidence: d.confidence || 0,
             })),
+            aiReport: body.aiReport || null,
         };
 
         const created = await cosmosService.createIncident(claimData);
         res.status(201).json(created);
 
-        // Fire-and-forget: generate AI incident report in background
-        if (process.env.OPENAI_API_KEY) {
+        // Fallback: generate server-side if client didn't include a report
+        if (!claimData.aiReport && process.env.OPENAI_API_KEY) {
             generateIncidentReport(claimData)
                 .then(async (report) => {
                     await cosmosService.updateIncident(claimData.id, { aiReport: report });
