@@ -1,0 +1,16 @@
+# ML damage detection output (example — replace with real model export)
+
+model_version: roadify-damage-v0.1
+timestamp_iso: 2026-04-11T12:00:00Z
+
+regions_scored:
+  - label: rear_bumper
+    confidence: 0.87
+    damage_class: deformation
+  - label: tail_light_left
+    confidence: 0.62
+    damage_class: crack
+
+summary_tokens: rear impact pattern consistent with low-speed collision; paint scuff cluster bumper corner.
+
+ocr_from_scene: partial plate visible — not used for ID in this sample

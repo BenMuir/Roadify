@@ -21,12 +21,14 @@
 <body>
   <h1>Incidents (live from <code>/incidents</code>)</h1>
   <p class="meta" id="meta">Loading…</p>
+  <p class="meta" id="fileNote" hidden style="margin-top:0.25rem;">
+    Opened from disk — using API below. If load fails, start the server and use
+    <code>http://localhost:PORT/incidents-view.html</code> or <code>?api=http://localhost:PORT</code>.
+  </p>
   <p class="err" id="fileHint" hidden style="max-width: 42rem;">
-    This file was opened as <strong>file://</strong>. The browser cannot call your API from there.
-    Start the server and open:
-    <code>http://localhost:3000/incidents-view.html</code>
-    (change the port if yours differs), or append
-    <code>?api=http://localhost:3000</code> to this page’s URL.
+    Still failing? Start <code>npm start</code>, then open this page via the server
+    (<code>http://localhost:3000/incidents-view.html</code>) or set
+    <code>?api=http://localhost:YOUR_PORT</code> in the address bar.
   </p>
   <button type="button" id="reload">Refresh</button>
   <p class="err" id="err" hidden></p>
@@ -50,7 +52,12 @@
   </details>
 
   <script>
-    var apiBase = (new URLSearchParams(location.search).get('api') || '').replace(/\/$/, '');
+    var qs = new URLSearchParams(location.search);
+    var apiBase = (qs.get('api') || '').replace(/\/$/, '');
+    var openedFromFile = location.protocol === 'file:';
+    if (openedFromFile && !apiBase) {
+      apiBase = 'http://localhost:3000';
+    }
     function apiUrl(path) {
       if (!path.startsWith('/')) path = '/' + path;
       return apiBase ? apiBase + path : path;
@@ -103,20 +110,15 @@
       var meta = document.getElementById('meta');
       var errEl = document.getElementById('err');
       var fileHint = document.getElementById('fileHint');
+      var fileNote = document.getElementById('fileNote');
       var tbody = document.getElementById('tbody');
       var raw = document.getElementById('raw');
       errEl.hidden = true;
       errEl.textContent = '';
       fileHint.hidden = true;
+      fileNote.hidden = !openedFromFile;
       meta.textContent = 'Loading…';
       tbody.innerHTML = '';
-
-      if (location.protocol === 'file:' && !apiBase) {
-        meta.textContent = 'Cannot load from disk.';
-        fileHint.hidden = false;
-        raw.textContent = '';
-        return;
-      }
 
       try {
         var data = await fetchIncidentList();
@@ -145,6 +147,7 @@
         meta.textContent = 'Failed to load.';
         errEl.hidden = false;
         errEl.textContent = (e && e.message) || String(e);
+        if (openedFromFile) fileHint.hidden = false;
         raw.textContent = '';
       }
     }
