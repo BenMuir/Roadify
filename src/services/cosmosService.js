@@ -7,7 +7,7 @@ const database = client.database(databaseId);
 const container = database.container(containerId);
 
 const cosmosService = {
-    // Save a new incident (The Data Contract)
+    // Save a new incident
     createIncident: async (incidentData) => {
         const { resource } = await container.items.create(incidentData);
         return resource;
@@ -15,21 +15,26 @@ const cosmosService = {
 
     // Get all incidents for the Dashboard
     getAllIncidents: async () => {
-        const { resources } = await container.items
-            .query("SELECT * from c ORDER BY c._ts DESC") // Using _ts (Cosmos internal timestamp) or your custom 'timestamp'
-            .fetchAll();
-        return resources;
+        try {
+            // Using _ts (System Timestamp) ensures EVERY document shows up,
+            // even if 'createdAt' or 'timestamp' is missing in some test data.
+            const { resources } = await container.items
+                .query("SELECT * FROM c ORDER BY c._ts DESC")
+                .fetchAll();
+            return resources;
+        } catch (error) {
+            console.error("Cosmos Query Error:", error.message);
+            throw error;
+        }
     },
 
-    // GET a single incident by ID (For the detailed view)
+    // GET a single incident by ID
     getIncidentById: async (id) => {
         try {
-            // In Cosmos, we use .item(id, partitionKey)
-            // Since we use 'id' as the partition key, it's (id, id)
+            // Point read is the most efficient way to get a single item
             const { resource } = await container.item(id, id).read();
             return resource;
         } catch (error) {
-            // Handle cases where the ID doesn't exist
             if (error.code === 404) return null;
             throw error;
         }

@@ -1,19 +1,24 @@
 const express = require('express');
 const cors = require('cors'); 
+const path = require('path'); // Added for cross-platform path resolution
 const cosmosService = require('./src/services/cosmosService');
 const blobService = require('./src/services/blobService');
 const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
 
 const app = express();
+
+// --- Middleware Configuration ---
 app.use(cors()); 
 app.use(express.json());
-app.use(express.static('public'));
+
+// Serving the static dashboard files using an absolute path for Azure compatibility
+app.use(express.static(path.join(__dirname, 'public')));
 
 const PORT = process.env.PORT || 3000;
 
 // --- HELPER: Triage Logic ---
-// This turns Roboflow labels into the business severity levels you promised the mentor.
+// This turns Roboflow labels into the business severity levels for the dashboard.
 const calculateSeverity = (aiResults) => {
     if (!aiResults || !aiResults.labels) return "Pending";
     
@@ -31,6 +36,8 @@ const calculateSeverity = (aiResults) => {
     return "Minor";
 };
 
+// --- API Routes ---
+
 // 1. Test Route: Check if infrastructure is alive
 app.get('/test-db', async (req, res) => {
     try {
@@ -41,7 +48,7 @@ app.get('/test-db', async (req, res) => {
     }
 });
 
-// 2. SAS Token Generator (The "VIP Pass" for Frontend photo uploads)
+// 2. SAS Token Generator (For Frontend photo uploads directly to Azure)
 app.get('/get-upload-token', async (req, res) => {
     try {
         const result = await blobService.generateUploadUrl();
@@ -52,7 +59,6 @@ app.get('/get-upload-token', async (req, res) => {
 });
 
 // 3. GET All Incidents (The Dashboard Feed)
-// Supports filtering by severity: /incidents?severity=Major
 app.get('/incidents', async (req, res) => {
     try {
         const { severity } = req.query;
@@ -88,7 +94,6 @@ app.post('/submit-incident', async (req, res) => {
             id: uuidv4(),
             ...req.body,
             status: "Submitted",
-            // Automatically triage based on AI results, or default to Pending
             severity: calculateSeverity(aiResults), 
             createdAt: new Date().toISOString()
         };
@@ -98,6 +103,11 @@ app.post('/submit-incident', async (req, res) => {
     } catch (err) {
         res.status(500).json({ error: "Failed to save incident", details: err.message });
     }
+});
+
+// Final fallback: If no API route matches, send the index.html (useful for SPAs)
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 app.listen(PORT, () => {
