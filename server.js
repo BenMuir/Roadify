@@ -136,7 +136,7 @@ app.post('/submit-claim', async (req, res) => {
     }
 });
 
-// Dashboard: list all claims
+// Dashboard: list all claims (with signed photo URLs)
 app.get('/incidents', async (req, res) => {
     try {
         const { severity } = req.query;
@@ -146,6 +146,10 @@ app.get('/incidents', async (req, res) => {
                 i.severity && i.severity.toLowerCase() === severity.toLowerCase()
             );
         }
+        incidents = incidents.map(inc => ({
+            ...inc,
+            photos: blobService.addReadTokensToPhotos(inc.photos),
+        }));
         res.json(incidents);
     } catch (err) {
         res.status(500).json({ error: "Failed to fetch incidents", details: err.message });

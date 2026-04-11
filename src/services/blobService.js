@@ -54,6 +54,25 @@ const blobService = {
         const blobUrl = `https://${storageAccountName}.blob.core.windows.net/${containerName}/${blobName}`;
         return { blobUrl, blobName };
     },
+
+    generateReadUrl: (blobName) => {
+        const sasToken = generateBlobSASQueryParameters({
+            containerName,
+            blobName,
+            permissions: BlobSASPermissions.parse("r"),
+            startsOn: new Date(),
+            expiresOn: new Date(new Date().valueOf() + 24 * 3600 * 1000),
+        }, sharedKeyCredential).toString();
+        return `https://${storageAccountName}.blob.core.windows.net/${containerName}/${blobName}?${sasToken}`;
+    },
+
+    addReadTokensToPhotos: (photos) => {
+        if (!photos || !Array.isArray(photos)) return photos;
+        return photos.map(p => ({
+            ...p,
+            url: p.blobName ? blobService.generateReadUrl(p.blobName) : p.blobUrl,
+        }));
+    },
 };
 
 module.exports = blobService;
