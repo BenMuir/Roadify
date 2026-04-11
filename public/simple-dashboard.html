@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fleet dashboard (mock)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 1.5rem; background: #111; color: #eee; max-width: 960px; }
+    h1 { font-size: 1.25rem; }
+    h2 { font-size: 1rem; margin: 1.75rem 0 0.5rem; font-weight: 600; }
+    .hint { color: #888; font-size: 0.875rem; margin: 0 0 0.5rem; }
+    table { border-collapse: collapse; width: 100%; margin-bottom: 0.5rem; }
+    th, td { border: 1px solid #444; padding: 0.5rem 0.65rem; text-align: left; vertical-align: top; }
+    th { background: #222; }
+    tr:nth-child(even) { background: #1a1a1a; }
+    .muted { color: #999; font-size: 0.85rem; }
+    .thumb { width: 72px; height: 48px; object-fit: cover; border-radius: 4px; border: 1px solid #444; vertical-align: middle; background: #222; }
+    button { margin-top: 0.75rem; padding: 0.4rem 0.8rem; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h1>Fleet dashboard (mock JSON)</h1>
+  <p id="meta"></p>
+
+  <h2>Incidents</h2>
+  <p class="hint">Incident-level fields only. Car 1 / Car 2 are filled from the cars table (same incident id).</p>
+  <table>
+    <thead>
+      <tr>
+        <th>When</th>
+        <th>Severity</th>
+        <th>Status</th>
+        <th>Car 1</th>
+        <th>Car 2</th>
+        <th>Location</th>
+      </tr>
+    </thead>
+    <tbody id="rows-incidents"></tbody>
+  </table>
+
+  <h2>Cars</h2>
+  <p class="hint">Primary key (incidentId, slot). FK = incident id; slot 1 = car 1, slot 2 = car 2 — no separate key for car 2.</p>
+  <table>
+    <thead>
+      <tr>
+        <th>Incident ID (FK)</th>
+        <th>Slot</th>
+        <th>Vehicle rego</th>
+        <th>Driver</th>
+      </tr>
+    </thead>
+    <tbody id="rows-cars"></tbody>
+  </table>
+
+  <h2>Reports</h2>
+  <p class="hint">Each report is attached to one incident via incidentId (foreign key).</p>
+  <table>
+    <thead>
+      <tr>
+        <th>Created</th>
+        <th>Incident ID (FK)</th>
+        <th>Attached incident</th>
+        <th>Category</th>
+        <th>Summary</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody id="rows-reports"></tbody>
+  </table>
+
+  <h2>Images</h2>
+  <p class="hint">Upload-style rows (filename / kind / note). Preview is a placeholder tile.</p>
+  <table>
+    <thead>
+      <tr>
+        <th>Preview</th>
+        <th>Uploaded</th>
+        <th>Incident ID (FK)</th>
+        <th>File</th>
+        <th>Kind</th>
+        <th>Note</th>
+      </tr>
+    </thead>
+    <tbody id="rows-images"></tbody>
+  </table>
+
+  <button type="button" id="btn">Refresh</button>
+
+  <script>
+    var mockIncidents = [
+      { id: "mock-001", createdAt: "2026-04-11T10:00:00Z", severity: "Low", status: "Closed", location: "Depot gate" },
+      { id: "mock-002", createdAt: "2026-04-10T15:30:00Z", severity: "Medium", status: "Open", location: "M2 exit 14" },
+      { id: "mock-003", createdAt: "2026-04-10T09:00:00Z", severity: "High", status: "Open", location: "Loading dock B" }
+    ];
+
+    /** PK = (incidentId, slot) */
+    var mockCars = [
+      { incidentId: "mock-001", slot: 1, vehicleRego: "ABC123", driverName: "Alex K." },
+      { incidentId: "mock-001", slot: 2, vehicleRego: "ZZZ999", driverName: "Other party" },
+      { incidentId: "mock-002", slot: 1, vehicleRego: "XYZ789", driverName: "Sam R." },
+      { incidentId: "mock-002", slot: 2, vehicleRego: "LMN000", driverName: "Third party" },
+      { incidentId: "mock-003", slot: 1, vehicleRego: "DEF456", driverName: "Jordan M." },
+      { incidentId: "mock-003", slot: 2, vehicleRego: "QQQ111", driverName: "Parked owner" }
+    ];
+
+    var mockReports = [
+      { id: "rep-001", incidentId: "mock-001", category: "Insurance", summary: "Awaiting photos.", createdAt: "2026-04-11T11:00:00Z", status: "Draft" },
+      { id: "rep-002", incidentId: "mock-002", category: "Internal", summary: "Review speed at merge.", createdAt: "2026-04-10T16:00:00Z", status: "Sent" }
+    ];
+
+    var mockImages = [
+      { id: "img-001", incidentId: "mock-001", fileName: "incident-mock-001-a.jpg", kind: "Scene", uploadedAt: "2026-04-11T10:05:00Z", note: "Approach angle" },
+      { id: "img-002", incidentId: "mock-002", fileName: "incident-mock-002-a.jpg", kind: "Damage", uploadedAt: "2026-04-10T15:35:00Z", note: "Driver side panel" },
+      { id: "img-003", incidentId: "mock-003", fileName: "incident-mock-003-a.jpg", kind: "Rego", uploadedAt: "2026-04-10T09:10:00Z", note: "Plate crop" }
+    ];
+
+    function carLine(incidentId, slot) {
+      for (var i = 0; i < mockCars.length; i++) {
+        var c = mockCars[i];
+        if (c.incidentId === incidentId && c.slot === slot) {
+          return c.vehicleRego + " · " + c.driverName;
+        }
+      }
+      return "—";
+    }
+
+    function incidentSummary(incidentId) {
+      for (var i = 0; i < mockIncidents.length; i++) {
+        if (mockIncidents[i].id === incidentId) {
+          var inc = mockIncidents[i];
+          return inc.severity + " · " + inc.status + " · " + new Date(inc.createdAt).toLocaleString();
+        }
+      }
+      return "—";
+    }
+
+    function thumbDataUrl(seed) {
+      var label = String(seed).replace(/[^a-zA-Z0-9-]/g, "").slice(0, 5) || "img";
+      var svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"72\" height=\"48\"><rect fill=\"#333\" width=\"72\" height=\"48\"/><text x=\"36\" y=\"29\" fill=\"#7dd3fc\" font-size=\"9\" text-anchor=\"middle\" font-family=\"system-ui,sans-serif\">" + label + "</text></svg>";
+      return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+    }
+
+    function show() {
+      var ti = document.getElementById("rows-incidents");
+      ti.innerHTML = "";
+      for (var i = 0; i < mockIncidents.length; i++) {
+        var r = mockIncidents[i];
+        var tr = document.createElement("tr");
+        tr.innerHTML =
+          "<td>" + new Date(r.createdAt).toLocaleString() + "</td>" +
+          "<td>" + r.severity + "</td>" +
+          "<td>" + r.status + "</td>" +
+          "<td class=\"muted\">" + carLine(r.id, 1) + "</td>" +
+          "<td class=\"muted\">" + carLine(r.id, 2) + "</td>" +
+          "<td class=\"muted\">" + (typeof r.location === "string" ? r.location : JSON.stringify(r.location)) + "</td>";
+        ti.appendChild(tr);
+      }
+
+      var tc = document.getElementById("rows-cars");
+      tc.innerHTML = "";
+      var sorted = mockCars.slice().sort(function (a, b) {
+        if (a.incidentId !== b.incidentId) return a.incidentId.localeCompare(b.incidentId);
+        return a.slot - b.slot;
+      });
+      for (var s = 0; s < sorted.length; s++) {
+        var car = sorted[s];
+        var crow = document.createElement("tr");
+        crow.innerHTML =
+          "<td class=\"muted\">" + car.incidentId + "</td>" +
+          "<td>" + car.slot + "</td>" +
+          "<td>" + car.vehicleRego + "</td>" +
+          "<td class=\"muted\">" + car.driverName + "</td>";
+        tc.appendChild(crow);
+      }
+
+      var trp = document.getElementById("rows-reports");
+      trp.innerHTML = "";
+      for (var j = 0; j < mockReports.length; j++) {
+        var p = mockReports[j];
+        var row = document.createElement("tr");
+        row.innerHTML =
+          "<td>" + new Date(p.createdAt).toLocaleString() + "</td>" +
+          "<td class=\"muted\">" + p.incidentId + "</td>" +
+          "<td class=\"muted\">" + incidentSummary(p.incidentId) + "</td>" +
+          "<td>" + p.category + "</td>" +
+          "<td class=\"muted\">" + p.summary + "</td>" +
+          "<td>" + p.status + "</td>";
+        trp.appendChild(row);
+      }
+
+      var tim = document.getElementById("rows-images");
+      tim.innerHTML = "";
+      for (var k = 0; k < mockImages.length; k++) {
+        var m = mockImages[k];
+        var ir = document.createElement("tr");
+        ir.innerHTML =
+          "<td><img class=\"thumb\" alt=\"\" width=\"72\" height=\"48\" src=\"" + thumbDataUrl(m.id) + "\" /></td>" +
+          "<td>" + new Date(m.uploadedAt).toLocaleString() + "</td>" +
+          "<td class=\"muted\">" + m.incidentId + "</td>" +
+          "<td>" + m.fileName + "</td>" +
+          "<td>" + m.kind + "</td>" +
+          "<td class=\"muted\">" + m.note + "</td>";
+        tim.appendChild(ir);
+      }
+
+      document.getElementById("meta").textContent =
+        mockIncidents.length + " incidents · " +
+        mockCars.length + " cars · " +
+        mockReports.length + " reports · " +
+        mockImages.length + " images (edit arrays in this file).";
+    }
+
+    document.getElementById("btn").onclick = show;
+    show();
+  </script>
+</body>
+</html>

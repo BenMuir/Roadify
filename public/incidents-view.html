@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Incidents from API</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 1.5rem; background: #0f1419; color: #e8eaed; max-width: 1000px; }
+    h1 { font-size: 1.25rem; margin-top: 0; }
+    p.meta { color: #9aa5b1; font-size: 0.9rem; }
+    table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
+    th, td { border: 1px solid #2d3a4d; padding: 0.5rem 0.75rem; text-align: left; }
+    th { background: #1a2332; color: #9aa5b1; }
+    tr:nth-child(even) { background: #151c28; }
+    button { margin-top: 0.75rem; padding: 0.45rem 1rem; cursor: pointer; border-radius: 8px; border: 1px solid #2d3a4d; background: #1a2332; color: #e8eaed; }
+    button:hover { border-color: #2dd4bf; color: #2dd4bf; }
+    .err { color: #f87171; margin-top: 0.75rem; }
+    pre.raw { margin-top: 1rem; padding: 1rem; background: #1a2332; border-radius: 8px; overflow: auto; font-size: 0.8rem; color: #9aa5b1; max-height: 240px; }
+  </style>
+</head>
+<body>
+  <h1>Incidents (live from <code>/incidents</code>)</h1>
+  <p class="meta" id="meta">Loading…</p>
+  <p class="err" id="fileHint" hidden style="max-width: 42rem;">
+    This file was opened as <strong>file://</strong>. The browser cannot call your API from there.
+    Start the server and open:
+    <code>http://localhost:3000/incidents-view.html</code>
+    (change the port if yours differs), or append
+    <code>?api=http://localhost:3000</code> to this page’s URL.
+  </p>
+  <button type="button" id="reload">Refresh</button>
+  <p class="err" id="err" hidden></p>
+  <table>
+    <thead>
+      <tr>
+        <th>Created</th>
+        <th>Severity</th>
+        <th>Status</th>
+        <th>Driver</th>
+        <th>Vehicle</th>
+        <th>Location</th>
+        <th>ID</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+  <details style="margin-top: 1.5rem;">
+    <summary style="cursor: pointer; color: #9aa5b1;">Raw JSON</summary>
+    <pre class="raw" id="raw"></pre>
+  </details>
+
+  <script>
+    var apiBase = (new URLSearchParams(location.search).get('api') || '').replace(/\/$/, '');
+    function apiUrl(path) {
+      if (!path.startsWith('/')) path = '/' + path;
+      return apiBase ? apiBase + path : path;
+    }
+
+    function esc(s) {
+      var d = document.createElement('div');
+      d.textContent = s == null ? '' : String(s);
+      return d.innerHTML;
+    }
+
+    function fmt(iso) {
+      if (!iso) return '—';
+      var d = new Date(iso);
+      return isNaN(d.getTime()) ? String(iso) : d.toLocaleString();
+    }
+
+    function loc(v) {
+      if (v == null) return '—';
+      return typeof v === 'string' ? v : JSON.stringify(v);
+    }
+
+    async function fetchIncidentList() {
+      var q = '?limit=50';
+      var paths = ['/incidents', '/api/incidents'];
+      var lastErr = null;
+      for (var pi = 0; pi < paths.length; pi++) {
+        var url = apiUrl(paths[pi] + q);
+        var res = await fetch(url, { headers: { Accept: 'application/json' } });
+        if (res.ok) {
+          var text = await res.text();
+          try {
+            return JSON.parse(text);
+          } catch (parseErr) {
+            throw new Error('Response was not JSON. URL: ' + url + ' — preview: ' + text.slice(0, 160));
+          }
+        }
+        if (res.status !== 404 || pi === paths.length - 1) {
+          var snippet = '';
+          try {
+            snippet = (await res.text()).slice(0, 200);
+          } catch (x) {}
+          throw new Error('HTTP ' + res.status + ' ' + (res.statusText || '') + (snippet ? ' — ' + snippet : '') + ' — tried: ' + url);
+        }
+      }
+      throw lastErr || new Error('No data');
+    }
+
+    async function load() {
+      var meta = document.getElementById('meta');
+      var errEl = document.getElementById('err');
+      var fileHint = document.getElementById('fileHint');
+      var tbody = document.getElementById('tbody');
+      var raw = document.getElementById('raw');
+      errEl.hidden = true;
+      errEl.textContent = '';
+      fileHint.hidden = true;
+      meta.textContent = 'Loading…';
+      tbody.innerHTML = '';
+
+      if (location.protocol === 'file:' && !apiBase) {
+        meta.textContent = 'Cannot load from disk.';
+        fileHint.hidden = false;
+        raw.textContent = '';
+        return;
+      }
+
+      try {
+        var data = await fetchIncidentList();
+        var rows = Array.isArray(data) ? data : [];
+        raw.textContent = JSON.stringify(rows, null, 2);
+
+        for (var i = 0; i < rows.length; i++) {
+          var r = rows[i];
+          var tr = document.createElement('tr');
+          tr.innerHTML =
+            '<td>' + esc(fmt(r.createdAt)) + '</td>' +
+            '<td>' + esc(r.severity != null ? r.severity : '—') + '</td>' +
+            '<td>' + esc(r.status != null ? r.status : '—') + '</td>' +
+            '<td>' + esc(r.driverName != null ? r.driverName : '—') + '</td>' +
+            '<td>' + esc(r.vehicleRego != null ? r.vehicleRego : '—') + '</td>' +
+            '<td>' + esc(loc(r.location)) + '</td>' +
+            '<td style="font-size:0.8rem;color:#9aa5b1">' + esc(r.id != null ? r.id : '—') + '</td>';
+          tbody.appendChild(tr);
+        }
+        meta.textContent =
+          rows.length + ' incident(s) · ' +
+          (apiBase || location.origin) +
+          ' · ' +
+          new Date().toLocaleTimeString();
+      } catch (e) {
+        meta.textContent = 'Failed to load.';
+        errEl.hidden = false;
+        errEl.textContent = (e && e.message) || String(e);
+        raw.textContent = '';
+      }
+    }
+
+    document.getElementById('reload').onclick = load;
+    load();
+  </script>
+</body>
+</html>
