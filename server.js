@@ -1,15 +1,34 @@
 const express = require('express');
-const cors = require('cors'); // Essential for PWA communication
+const cors = require('cors'); 
 const cosmosService = require('./src/services/cosmosService');
 const blobService = require('./src/services/blobService');
 const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
 
 const app = express();
-app.use(cors()); // Enable CORS so the React PWA can talk to this server
+app.use(cors()); 
 app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
+
+// --- HELPER: Triage Logic ---
+// This turns Roboflow labels into the business severity levels you promised the mentor.
+const calculateSeverity = (aiResults) => {
+    if (!aiResults || !aiResults.labels) return "Pending";
+    
+    const labels = aiResults.labels.map(l => l.toLowerCase());
+    
+    // Logic: If it's structural or safety-related, it's Major.
+    if (labels.includes('airbag_deployed') || labels.includes('chassis_damage') || labels.includes('shattered_windshield')) {
+        return "Major";
+    }
+    // Logic: Dents or multiple panels.
+    if (labels.includes('dent') || labels.includes('door_damage')) {
+        return "Medium";
+    }
+    // Default to Minor for scratches/paint.
+    return "Minor";
+};
 
 // 1. Test Route: Check if infrastructure is alive
 app.get('/test-db', async (req, res) => {
@@ -31,14 +50,45 @@ app.get('/get-upload-token', async (req, res) => {
     }
 });
 
-// 3. Incident Submission (Fulfilling the Data Contract)
+// 3. GET All Incidents (The Dashboard Feed)
+// Supports filtering by severity: /incidents?severity=Major
+app.get('/incidents', async (req, res) => {
+    try {
+        const { severity } = req.query;
+        let incidents = await cosmosService.getAllIncidents();
+
+        if (severity) {
+            incidents = incidents.filter(i => i.severity.toLowerCase() === severity.toLowerCase());
+        }
+
+        res.json(incidents);
+    } catch (err) {
+        res.status(500).json({ error: "Failed to fetch incidents", details: err.message });
+    }
+});
+
+// 4. GET Single Incident (Detailed View)
+app.get('/incidents/:id', async (req, res) => {
+    try {
+        const incident = await cosmosService.getIncidentById(req.params.id);
+        if (!incident) return res.status(404).json({ error: "Incident not found" });
+        res.json(incident);
+    } catch (err) {
+        res.status(500).json({ error: "Error retrieving incident", details: err.message });
+    }
+});
+
+// 5. Incident Submission (With Auto-Triage)
 app.post('/submit-incident', async (req, res) => {
     try {
+        const { aiResults } = req.body;
+        
         const incidentData = {
-            id: uuidv4(), // Cosmos DB required unique ID
-            ...req.body,  // Includes driverName, vehicleRego, location, insurancePolicy, etc.
+            id: uuidv4(),
+            ...req.body,
             status: "Submitted",
-            severity: "Pending", // To be updated by AI  later
+            // Automatically triage based on AI results, or default to Pending
+            severity: calculateSeverity(aiResults), 
             createdAt: new Date().toISOString()
         };
 
