@@ -39,6 +39,19 @@ const cosmosService = {
         }
     },
 
+    updateIncident: async (id, updates) => {
+        try {
+            const { resource: existing } = await container.item(id, id).read();
+            if (!existing) return null;
+            const updated = { ...existing, ...updates };
+            const { resource } = await container.item(id, id).replace(updated);
+            return resource;
+        } catch (error) {
+            console.error('Cosmos update error:', error.message);
+            throw error;
+        }
+    },
+
     deleteIncident: async (id) => {
         try {
             await container.item(id, id).delete();

@@ -3,6 +3,7 @@ const cors = require('cors');
 const path = require('path'); // FIXED: Added missing import
 const cosmosService = require('./src/services/cosmosService');
 const blobService = require('./src/services/blobService');
+const { generateIncidentReport } = require('./src/services/reportService');
 const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
 
@@ -131,6 +132,18 @@ app.post('/submit-claim', async (req, res) => {
 
         const created = await cosmosService.createIncident(claimData);
         res.status(201).json(created);
+
+        // Fire-and-forget: generate AI incident report in background
+        if (process.env.OPENAI_API_KEY) {
+            generateIncidentReport(claimData)
+                .then(async (report) => {
+                    await cosmosService.updateIncident(claimData.id, { aiReport: report });
+                    console.log(`AI report generated for claim ${claimData.id}`);
+                })
+                .catch((err) => {
+                    console.error(`AI report failed for claim ${claimData.id}:`, err.message);
+                });
+        }
     } catch (err) {
         res.status(500).json({ error: "Failed to save claim", details: err.message });
     }
