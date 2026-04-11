@@ -24,28 +24,20 @@ function resizeForVision(dataUrl) {
 function buildPrompt(vehicle, incidentContext) {
   const ctx = incidentContext || {}
   const thirdParty = ctx.thirdPartyInvolved
-  const hitAndRun = ctx.hitAndRun
-  const parkedWhenHit = ctx.parkedWhenHit
-  const collisionObject = ctx.collisionObject
+  const otherPresent = ctx.otherPartyPresent
 
   let contextBlock = ''
   if (thirdParty === true) {
     contextBlock += '\nINCIDENT CONTEXT: Another vehicle was involved.'
-    if (hitAndRun) {
-      contextBlock += ' This was a HIT AND RUN — the other driver left the scene.'
-      if (parkedWhenHit) {
-        contextBlock += ' The claimant\'s vehicle was PARKED when it was hit.'
-      }
-      contextBlock += ' Try to identify the other vehicle from any photos that may have captured it before it left, or from paint transfer / debris.'
-    } else {
+    if (otherPresent === false) {
+      contextBlock += ' The other driver has LEFT the scene.'
+      contextBlock += ' Try to identify the other vehicle from any photos that may have captured it, or from paint transfer / debris.'
+    } else if (otherPresent === true) {
       contextBlock += ' The other driver is present at the scene.'
     }
   } else if (thirdParty === false) {
-    contextBlock += `\nINCIDENT CONTEXT: No other vehicle was involved. This is a single-vehicle incident.`
-    if (collisionObject) {
-      contextBlock += ` The vehicle collided with: ${collisionObject}.`
-    }
-    contextBlock += ' Do NOT look for another vehicle — focus on the damage to the claimant\'s vehicle and the object/environment involved.'
+    contextBlock += `\nINCIDENT CONTEXT: No other vehicle was involved.`
+    contextBlock += ' Focus on the damage to the claimant\'s vehicle and infer what was hit from the photos (object, barrier, pole, etc).'
   }
 
   const otherVehicleInstructions = thirdParty
@@ -94,24 +86,25 @@ export async function generateIncidentReport(formData) {
 
   const ctx = {
     thirdParty: formData.thirdPartyInvolved,
-    hitAndRun: formData.hitAndRun,
-    parkedWhenHit: formData.parkedWhenHit,
-    collisionObject: formData.collisionObject,
+    otherPartyPresent: formData.otherPartyPresent,
     atFault: formData.atFault,
-    vehicleSpeed: formData.vehicleSpeed,
-    roadCondition: formData.roadCondition,
   }
 
   const contextLines = []
-  if (ctx.thirdParty === true) contextLines.push('Third party vehicle involved')
-  if (ctx.thirdParty === false) contextLines.push('Single vehicle incident')
-  if (ctx.hitAndRun) contextLines.push('Hit and run — other driver fled')
-  if (ctx.parkedWhenHit) contextLines.push('Claimant vehicle was parked when hit')
-  if (ctx.collisionObject) contextLines.push(`Collided with: ${ctx.collisionObject}`)
-  if (ctx.atFault === true) contextLines.push('Claimant is at fault')
-  else if (ctx.atFault === false) contextLines.push('Claimant is NOT at fault')
-  if (ctx.vehicleSpeed) contextLines.push(`Reported speed: ${ctx.vehicleSpeed}`)
-  if (ctx.roadCondition) contextLines.push(`Road condition: ${ctx.roadCondition}`)
+  if (ctx.thirdParty === true) {
+    contextLines.push('Another vehicle was involved')
+    if (ctx.otherPartyPresent === true) contextLines.push('Other driver is present at scene')
+    else if (ctx.otherPartyPresent === false) contextLines.push('Other driver has left the scene')
+  }
+  if (ctx.thirdParty === false) contextLines.push('No other vehicle involved')
+  if (ctx.atFault === true) contextLines.push('Claimant says they are at fault')
+  else if (ctx.atFault === false) contextLines.push('Claimant says they are NOT at fault')
+  else if (ctx.atFault === 'unsure') contextLines.push('Claimant is unsure about fault')
+
+  const weather = formData.weather
+  const weatherLine = weather
+    ? `Weather at time of claim: ${weather.condition}, ${weather.temperature}°C, wind ${weather.windSpeed} km/h`
+    : 'Weather: not available'
 
   const photoSlots = formData.photoSlots || {}
   const slotKeys = Object.keys(photoSlots)
@@ -123,6 +116,7 @@ export async function generateIncidentReport(formData) {
 Claimant Vehicle: ${[formData.vehicleYear, formData.vehicleColor, formData.vehicleMake, formData.vehicleModel].filter(Boolean).join(' ')} (Plate: ${formData.vehicleRego || 'Unknown'})
 ${ctx.thirdParty ? `Other Vehicle: ${[formData.otherVehicleColor, formData.otherVehicleMake, formData.otherVehicleModel].filter(Boolean).join(' ') || 'Unknown'} (Plate: ${formData.otherVehicleRego || 'Unknown'})` : ''}
 Location: ${formData.location?.address || 'Unknown'}
+${weatherLine}
 Incident Context: ${contextLines.join('; ') || 'None'}
 AI Description: ${formData.description || 'None'}
 Photos submitted: ${photoCount} of 6 slots used (slots: ${slotKeys.join(', ') || 'none'})
@@ -130,7 +124,16 @@ ML Damage Detections:
 ${damage || 'No detections'}
 --- END ---
 
-${photoCount > 0 ? `I am also attaching ${Math.min(photoCount, 3)} original photos from the claim. Examine them carefully for the fraud analysis.` : ''}
+${photoCount > 0 ? `I am also attaching ${Math.min(photoCount, 3)} original photos from the claim. Examine them carefully for BOTH the incident report AND the fraud analysis.` : ''}
+
+IMPORTANT — INFER FROM PHOTOS:
+You must examine the photos and infer the following context clues. Report these in the "scene_assessment" field:
+- Road surface type (sealed, gravel, dirt, wet, dry) — visible in the photos
+- Approximate impact severity from damage patterns (low-speed vs high-speed)
+- Whether a second vehicle is visible in ANY of the photos
+- Weather conditions visible (clear sky, overcast, rain, wet ground)
+- Presence of debris, skid marks, or scene disturbance
+- Whether the vehicle appears parked or was in motion (position on road, angle, surroundings)
 
 Respond ONLY with valid JSON using ALL these keys:
 {
@@ -141,6 +144,17 @@ Respond ONLY with valid JSON using ALL these keys:
   "data_quality": "Brief note on completeness of submitted data",
   "liability_assessment": "Brief preliminary liability opinion",
   "estimated_repair_class": "minor_cosmetic | moderate_panel | major_structural | total_loss",
+  "scene_assessment": {
+    "inferred_road_surface": "What the road looks like in photos (e.g. dry sealed road, wet bitumen, gravel)",
+    "inferred_weather_visible": "What the weather looks like in photos (e.g. clear, overcast, wet ground)",
+    "weather_api": "${weather ? weather.condition + ', ' + weather.temperature + '°C' : 'unavailable'}",
+    "weather_match": true,
+    "weather_match_note": "Does the API weather match what is visible in the photos? Note any discrepancy.",
+    "second_vehicle_visible": false,
+    "debris_or_skid_marks": false,
+    "inferred_speed_category": "low | moderate | high (based on damage patterns and scene)",
+    "vehicle_position_note": "Brief note on vehicle positioning — parked, mid-road, intersection, etc."
+  },
   "fraud_analysis": {
     "risk_score": "integer 1-10 (1=very low risk, 10=almost certainly fraudulent)",
     "risk_level": "low | medium | high",
@@ -150,11 +164,11 @@ Respond ONLY with valid JSON using ALL these keys:
     },
     "damage_vs_scene": {
       "flag": false,
-      "note": "Does the environment match the damage severity? E.g. major collision but clean road with no debris or skid marks? Parked-car hit but the car is in the middle of a road? Does the damage orientation make physical sense for the described incident?"
+      "note": "Does the environment match the damage severity? E.g. major collision but clean road with no debris or skid marks? Does the damage orientation make physical sense? Does inferred speed match damage extent?"
     },
     "damage_plausibility": {
       "flag": false,
-      "note": "Does the type and pattern of damage match the reported incident type? E.g. rear-end collision but only side damage? Pole collision but wide spread damage?"
+      "note": "Does the type and pattern of damage match the reported incident type and inferred speed?"
     },
     "photo_coverage": {
       "photos_submitted": ${photoCount},
@@ -163,7 +177,7 @@ Respond ONLY with valid JSON using ALL these keys:
     },
     "claim_coherence": {
       "flag": false,
-      "note": "Do all the claim details tell a coherent story? Vehicle types, fault admission, incident context, and AI description all align?"
+      "note": "Do all the claim details tell a coherent story? Does the claimant say third party involved but no second car visible? Does the weather API match the scene? Do all details align?"
     },
     "indicators": ["array of specific observations — only include genuine concerns, leave empty if nothing suspicious"]
   }
@@ -174,9 +188,9 @@ FRAUD ANALYSIS GUIDELINES:
 - Having few photos is a data gap, not fraud. Note it factually without assuming bad intent.
 - Close-up photos are normal and expected — not suspicious.
 - Focus on: Does the ENVIRONMENT match the DAMAGE? Does the STORY match the EVIDENCE?
-- Consider reported speed vs damage severity. A "stationary" claim with major structural damage is inconsistent unless parked-hit scenario.
-- Check road conditions vs scene: wet road claim but dry pavement in photos? Gravel claimed but sealed road visible?
-- Does damage pattern match reported speed? Low speed should mean minor damage; high speed with only a small dent is suspicious.
+- Use the weather API data to cross-reference with visible conditions in photos. If API says rain but photos show bone-dry road and clear sky, that is notable.
+- If claimant says another vehicle was involved but no second vehicle appears in ANY photo AND other driver has left, that is context not fraud — they may have left before photos.
+- Infer speed from damage: minor scratches = low speed, crumpled panels = moderate, structural deformation = high speed. Does the scene show evidence consistent with that speed (debris, skid marks)?
 - Be fair and evidence-based. Most claims are legitimate. Only flag real inconsistencies.`
 
   const messages = [

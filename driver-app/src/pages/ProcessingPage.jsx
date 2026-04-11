@@ -36,9 +36,7 @@ export default function ProcessingPage({ formData, updateFormData, userProfile }
         setCurrentStep(2)
         const incidentContext = {
           thirdPartyInvolved: formData.thirdPartyInvolved,
-          hitAndRun: formData.hitAndRun,
-          parkedWhenHit: formData.parkedWhenHit,
-          collisionObject: formData.collisionObject,
+          otherPartyPresent: formData.otherPartyPresent,
         }
         const vehicleForAI = {
           rego: formData.vehicleRego,

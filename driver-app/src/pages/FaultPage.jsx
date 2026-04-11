@@ -2,28 +2,6 @@ import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useState } from 'react'
 
-const COLLISION_OBJECTS = [
-  { value: 'pole', label: 'Pole / Post' },
-  { value: 'barrier', label: 'Barrier / Guardrail' },
-  { value: 'tree', label: 'Tree' },
-  { value: 'animal', label: 'Animal' },
-  { value: 'kerb', label: 'Kerb / Gutter' },
-  { value: 'other', label: 'Other object' },
-]
-
-const SPEED_OPTIONS = [
-  { value: 'stationary', label: 'Stationary / Parked' },
-  { value: 'slow', label: 'Slow (< 20 km/h)' },
-  { value: 'moderate', label: 'Moderate (20–60 km/h)' },
-  { value: 'fast', label: 'Fast (60+ km/h)' },
-]
-
-const ROAD_CONDITIONS = [
-  { value: 'dry', label: 'Dry' },
-  { value: 'wet', label: 'Wet / Rainy' },
-  { value: 'gravel', label: 'Gravel / Dirt' },
-  { value: 'icy', label: 'Icy / Slippery' },
-]
 
 function ChoiceButton({ selected, onClick, children, variant = 'default' }) {
   const styles = {
@@ -74,11 +52,8 @@ export default function FaultPage({ formData, updateFormData, userProfile }) {
 
   const update = (fields) => updateFormData(fields)
 
-  const showHitAndRun = formData.thirdPartyInvolved === true
-  const showParked = formData.thirdPartyInvolved === true && formData.hitAndRun === true
-  const showCollisionObject = formData.thirdPartyInvolved === false
-  const showFault = formData.thirdPartyInvolved === true && formData.hitAndRun === false
-  const showFaultUnsure = formData.thirdPartyInvolved === false
+  const showThirdPartyPresent = formData.thirdPartyInvolved === true
+  const showFault = formData.thirdPartyInvolved !== null
 
   const editInputClass =
     'w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/25 focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition-all'
@@ -225,96 +200,51 @@ export default function FaultPage({ formData, updateFormData, userProfile }) {
         {/* Q1: Third party involved? */}
         <QuestionBlock
           question="Was another vehicle involved?"
-          subtitle="This helps our AI know what to look for in your photos"
+          subtitle="Our AI will analyse your photos for the rest"
           delay={0.15}
         >
           <ChoiceButton
             selected={formData.thirdPartyInvolved === true}
-            onClick={() => update({ thirdPartyInvolved: true, collisionObject: '', hitAndRun: null, parkedWhenHit: null })}
+            onClick={() => update({ thirdPartyInvolved: true, otherPartyPresent: null })}
             variant="default"
           >
-            Yes, another vehicle
+            Yes
           </ChoiceButton>
           <ChoiceButton
             selected={formData.thirdPartyInvolved === false}
-            onClick={() => update({ thirdPartyInvolved: false, hitAndRun: null, parkedWhenHit: null, atFault: null })}
+            onClick={() => update({ thirdPartyInvolved: false, otherPartyPresent: null })}
             variant="default"
           >
-            No, single vehicle / object
+            No
           </ChoiceButton>
         </QuestionBlock>
 
-        {/* Q2a: Hit and run? (if third party) */}
+        {/* Q2: Is the other driver present? (only if third party involved) */}
         <AnimatePresence>
-          {showHitAndRun && (
+          {showThirdPartyPresent && (
             <QuestionBlock
-              question="Was it a hit and run?"
-              subtitle="The other driver left the scene"
+              question="Is the other driver present?"
+              subtitle="Still at the scene when you took photos"
             >
               <ChoiceButton
-                selected={formData.hitAndRun === true}
-                onClick={() => update({ hitAndRun: true, parkedWhenHit: null })}
-                variant="danger"
-              >
-                Yes, they left the scene
-              </ChoiceButton>
-              <ChoiceButton
-                selected={formData.hitAndRun === false}
-                onClick={() => update({ hitAndRun: false, parkedWhenHit: null })}
+                selected={formData.otherPartyPresent === true}
+                onClick={() => update({ otherPartyPresent: true })}
                 variant="success"
               >
-                No, other driver is present
-              </ChoiceButton>
-            </QuestionBlock>
-          )}
-        </AnimatePresence>
-
-        {/* Q2b: Parked when hit? (if hit and run) */}
-        <AnimatePresence>
-          {showParked && (
-            <QuestionBlock question="Was your vehicle parked when hit?">
-              <ChoiceButton
-                selected={formData.parkedWhenHit === true}
-                onClick={() => update({ parkedWhenHit: true, atFault: false })}
-                variant="default"
-              >
-                Yes, it was parked
+                Yes, they are here
               </ChoiceButton>
               <ChoiceButton
-                selected={formData.parkedWhenHit === false}
-                onClick={() => update({ parkedWhenHit: false })}
+                selected={formData.otherPartyPresent === false}
+                onClick={() => update({ otherPartyPresent: false })}
                 variant="default"
               >
-                No, I was driving
+                No, they left
               </ChoiceButton>
             </QuestionBlock>
           )}
         </AnimatePresence>
 
-        {/* Q2c: What did you hit? (if no third party) */}
-        <AnimatePresence>
-          {showCollisionObject && (
-            <QuestionBlock question="What did you collide with?">
-              <div className="grid grid-cols-2 gap-2">
-                {COLLISION_OBJECTS.map((obj) => (
-                  <button
-                    key={obj.value}
-                    onClick={() => update({ collisionObject: obj.value })}
-                    className={`py-3 px-3 rounded-xl font-medium text-sm transition-all cursor-pointer border-2 ${
-                      formData.collisionObject === obj.value
-                        ? 'bg-brand/15 border-brand text-brand-light'
-                        : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10'
-                    }`}
-                  >
-                    {obj.label}
-                  </button>
-                ))}
-              </div>
-            </QuestionBlock>
-          )}
-        </AnimatePresence>
-
-        {/* Q3: Fault (if third party present, not hit-and-run) */}
+        {/* Q3: Fault */}
         <AnimatePresence>
           {showFault && (
             <QuestionBlock question="Were you at fault?">
@@ -333,93 +263,12 @@ export default function FaultPage({ formData, updateFormData, userProfile }) {
                 At fault
               </ChoiceButton>
               <ChoiceButton
-                selected={formData.atFault === null && formData.hitAndRun === false}
-                onClick={() => update({ atFault: null })}
+                selected={formData.atFault === 'unsure'}
+                onClick={() => update({ atFault: 'unsure' })}
                 variant="muted"
               >
                 Not sure
               </ChoiceButton>
-            </QuestionBlock>
-          )}
-        </AnimatePresence>
-
-        {/* Q3b: Fault for single vehicle (simpler) */}
-        <AnimatePresence>
-          {showFaultUnsure && formData.collisionObject && (
-            <QuestionBlock question="Were you at fault?">
-              <ChoiceButton
-                selected={formData.atFault === true}
-                onClick={() => update({ atFault: true })}
-                variant="danger"
-              >
-                Yes
-              </ChoiceButton>
-              <ChoiceButton
-                selected={formData.atFault === false}
-                onClick={() => update({ atFault: false })}
-                variant="success"
-              >
-                No
-              </ChoiceButton>
-              <ChoiceButton
-                selected={formData.atFault === null && !!formData.collisionObject}
-                onClick={() => update({ atFault: null })}
-                variant="muted"
-              >
-                Not sure
-              </ChoiceButton>
-            </QuestionBlock>
-          )}
-        </AnimatePresence>
-
-        {/* Speed at time of incident */}
-        <AnimatePresence>
-          {formData.thirdPartyInvolved !== null && (
-            <QuestionBlock
-              question="How fast were you going?"
-              subtitle="Helps assess damage plausibility"
-            >
-              <div className="grid grid-cols-2 gap-2">
-                {SPEED_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => update({ vehicleSpeed: opt.value })}
-                    className={`py-3 px-3 rounded-xl font-medium text-sm transition-all cursor-pointer border-2 ${
-                      formData.vehicleSpeed === opt.value
-                        ? 'bg-brand/15 border-brand text-brand-light'
-                        : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </QuestionBlock>
-          )}
-        </AnimatePresence>
-
-        {/* Road / weather conditions */}
-        <AnimatePresence>
-          {formData.thirdPartyInvolved !== null && (
-            <QuestionBlock
-              question="Road conditions?"
-              subtitle="Wet, dry, gravel — helps verify the scene"
-            >
-              <div className="grid grid-cols-2 gap-2">
-                {ROAD_CONDITIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => update({ roadCondition: opt.value })}
-                    className={`py-3 px-3 rounded-xl font-medium text-sm transition-all cursor-pointer border-2 ${
-                      formData.roadCondition === opt.value
-                        ? 'bg-brand/15 border-brand text-brand-light'
-                        : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
             </QuestionBlock>
           )}
         </AnimatePresence>

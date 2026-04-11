@@ -38,11 +38,8 @@ const initialFormData = {
   otherVehicleModel: '',
   atFault: null,
   thirdPartyInvolved: null,
-  hitAndRun: null,
-  parkedWhenHit: null,
-  collisionObject: '',
-  vehicleSpeed: '',
-  roadCondition: '',
+  otherPartyPresent: null,
+  weather: null,
   incidentType: '',
   description: '',
   photos: [],
@@ -52,6 +49,17 @@ const initialFormData = {
   damagePredictions: [],
   location: { lat: null, lng: null, address: null },
   timestamp: new Date().toISOString(),
+}
+
+function weatherCodeToLabel(code) {
+  if (code <= 3) return 'clear'
+  if (code <= 49) return 'fog'
+  if (code <= 69) return 'rain'
+  if (code <= 79) return 'snow'
+  if (code <= 84) return 'rain'
+  if (code <= 86) return 'snow'
+  if (code <= 99) return 'storm'
+  return 'unknown'
 }
 
 export default function App() {
@@ -65,6 +73,23 @@ export default function App() {
         ...prev,
         location: { lat: geo.lat, lng: geo.lng, address: geo.address },
       }))
+
+      fetch(`https://api.open-meteo.com/v1/forecast?latitude=${geo.lat}&longitude=${geo.lng}&current_weather=true`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.current_weather) {
+            setFormData((prev) => ({
+              ...prev,
+              weather: {
+                temperature: data.current_weather.temperature,
+                windSpeed: data.current_weather.windspeed,
+                weatherCode: data.current_weather.weathercode,
+                condition: weatherCodeToLabel(data.current_weather.weathercode),
+              },
+            }))
+          }
+        })
+        .catch(() => {})
     }
   }, [geo.status, geo.lat, geo.lng, geo.address])
 

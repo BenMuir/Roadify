@@ -151,19 +151,9 @@ export default function ReviewPage({ formData, updateFormData, userProfile }) {
                 Single vehicle
               </span>
             ) : null}
-            {formData.hitAndRun && (
+            {formData.otherPartyPresent === false && formData.thirdPartyInvolved && (
               <span className="px-2.5 py-1 bg-severity-major/15 text-severity-major text-xs font-medium rounded-full">
-                Hit and run
-              </span>
-            )}
-            {formData.parkedWhenHit && (
-              <span className="px-2.5 py-1 bg-white/10 text-white/50 text-xs font-medium rounded-full">
-                Parked when hit
-              </span>
-            )}
-            {formData.collisionObject && (
-              <span className="px-2.5 py-1 bg-white/10 text-white/50 text-xs font-medium rounded-full capitalize">
-                Hit {formData.collisionObject}
+                Other driver left
               </span>
             )}
           </div>
@@ -206,12 +196,6 @@ export default function ReviewPage({ formData, updateFormData, userProfile }) {
               {formData.otherVehicleRego && (
                 <InfoRow label="Other plate" value={formData.otherVehicleRego} />
               )}
-            </>
-          )}
-          {formData.thirdPartyInvolved === false && formData.collisionObject && (
-            <>
-              <div className="border-t border-white/5 my-1" />
-              <InfoRow label="Object hit" value={formData.collisionObject} />
             </>
           )}
         </motion.div>
