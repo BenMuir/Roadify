@@ -1,59 +1,54 @@
 const express = require('express');
-const { BlobServiceClient, StorageSharedKeyCredential, generateBlobSASQueryParameters, BlobSASPermissions } = require('@azure/storage-blob');
-const { CosmosClient } = require('@azure/cosmos');
+const cors = require('cors'); // Essential for PWA communication
+const cosmosService = require('./src/services/cosmosService');
+const blobService = require('./src/services/blobService');
 const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
 
 const app = express();
+app.use(cors()); // Enable CORS so the React PWA can talk to this server
 app.use(express.json());
 
-// 1. Initialize Cosmos DB
-const client = new CosmosClient(process.env.COSMOS_CONNECTION_STRING);
-const database = client.database(process.env.COSMOS_DATABASE_ID);
-const container = database.container(process.env.COSMOS_CONTAINER_ID);
+const PORT = process.env.PORT || 3000;
 
-// 2. SAS Token Generator (The "VIP Pass" for the Frontend)
-app.get('/get-upload-token', async (req, res) => {
+// 1. Test Route: Check if infrastructure is alive
+app.get('/test-db', async (req, res) => {
     try {
-        const blobName = `incident-${uuidv4()}.jpg`; // Unique name for the upcoming photo
-        const sharedKeyCredential = new StorageSharedKeyCredential(
-            "roadifystoragebm", // Your Storage Account Name
-            "YOUR_ACCOUNT_KEY" // Found in 'Keys' tab in Azure
-        );
-
-        const sasToken = generateBlobSASQueryParameters({
-            containerName: process.env.AZURE_STORAGE_CONTAINER_NAME,
-            blobName: blobName,
-            permissions: BlobSASPermissions.parse("cw"), // c=create, w=write
-            startsOn: new Date(),
-            expiresOn: new Date(new Date().valueOf() + 3600 * 1000), // Valid for 1 hour
-        }, sharedKeyCredential).toString();
-
-        const uploadUrl = `https://roadifystoragebm.blob.core.windows.net/${process.env.AZURE_STORAGE_CONTAINER_NAME}/${blobName}?${sasToken}`;
-        
-        // Send back the URL the Frontend will 'PUT' the file to
-        res.json({ uploadUrl, blobName });
-    } catch (err) {
-        res.status(500).send(err.message);
+        const incidents = await cosmosService.getAllIncidents();
+        res.json({ message: "Connected to RoadifyDB!", count: incidents.length });
+    } catch (error) {
+        res.status(500).json({ error: "DB Connection Failed", details: error.message });
     }
 });
 
-// 3. Incident Submission (The Data Contract)
+// 2. SAS Token Generator (The "VIP Pass" for Frontend photo uploads)
+app.get('/get-upload-token', async (req, res) => {
+    try {
+        const result = await blobService.generateUploadUrl();
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ error: "Failed to generate SAS token", details: err.message });
+    }
+});
+
+// 3. Incident Submission (Fulfilling the Data Contract)
 app.post('/submit-incident', async (req, res) => {
     try {
         const incidentData = {
-            id: uuidv4(), // Cosmos DB loves an 'id' field
-            ...req.body, // This will include driverName, vehicleRego, location, etc.
+            id: uuidv4(), // Cosmos DB required unique ID
+            ...req.body,  // Includes driverName, vehicleRego, location, insurancePolicy, etc.
             status: "Submitted",
-            severity: "Pending", // To be updated by our ML Engineer later
+            severity: "Pending", // To be updated by AI  later
             createdAt: new Date().toISOString()
         };
 
-        const { resource: createdItem } = await container.items.create(incidentData);
+        const createdItem = await cosmosService.createIncident(incidentData);
         res.status(201).json(createdItem);
     } catch (err) {
-        res.status(500).send(err.message);
+        res.status(500).json({ error: "Failed to save incident", details: err.message });
     }
 });
 
-app.listen(process.env.PORT, () => console.log(`Roadify Backend running on port ${process.env.PORT}`));
+app.listen(PORT, () => {
+    console.log(`🚀 Roadify Backend running on http://localhost:${PORT}`);
+});
