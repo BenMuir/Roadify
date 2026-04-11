@@ -111,13 +111,11 @@ app.post('/submit-claim', async (req, res) => {
 
             incidentContext: {
                 thirdPartyInvolved: body.thirdPartyInvolved,
-                hitAndRun: body.hitAndRun,
-                parkedWhenHit: body.parkedWhenHit,
-                collisionObject: body.collisionObject || "",
+                otherPartyPresent: body.otherPartyPresent,
                 atFault: body.atFault,
-                vehicleSpeed: body.vehicleSpeed || "",
-                roadCondition: body.roadCondition || "",
             },
+
+            weather: body.weather || null,
 
             incident: {
                 type: body.incidentType || "",
