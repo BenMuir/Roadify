@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Roadify | Claims Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
         tailwind.config = {
             theme: {
@@ -22,11 +24,17 @@
         @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+        .photo-thumb { transition: all 0.15s; }
+        .photo-thumb.active { ring: 2px solid #6366f1; }
+        #lightbox { transition: opacity 0.2s; }
     </style>
 </head>
 <body class="bg-gray-50 font-sans text-gray-900 min-h-screen">
 
 <div id="app"></div>
+<div id="lightbox" class="fixed inset-0 bg-black/80 z-50 hidden items-center justify-center cursor-pointer" onclick="closeLightbox()">
+    <img id="lightbox-img" class="max-w-[90vw] max-h-[90vh] rounded-lg shadow-2xl" />
+</div>
 
 <script>
 const API = window.location.origin;
@@ -35,25 +43,27 @@ let currentView = 'list';
 let currentClaimId = null;
 let activeFilter = 'all';
 let searchQuery = '';
+let selectedPhotoIndex = 0;
+let photoViewMode = 'original';
 
 async function fetchClaims() {
     try {
         const res = await fetch(`${API}/incidents`);
         claims = await res.json();
+        claims.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
         render();
     } catch (err) {
         console.error('Failed to fetch claims:', err);
     }
 }
 
-function getClaim(id) {
-    return claims.find(c => c.id === id);
-}
+function getClaim(id) { return claims.find(c => c.id === id); }
 
 function render() {
     const app = document.getElementById('app');
     if (currentView === 'detail' && currentClaimId) {
         app.innerHTML = renderDetail(getClaim(currentClaimId));
+        initMap(getClaim(currentClaimId));
     } else {
         app.innerHTML = renderList();
     }
@@ -62,6 +72,8 @@ function render() {
 function openClaim(id) {
     currentView = 'detail';
     currentClaimId = id;
+    selectedPhotoIndex = 0;
+    photoViewMode = 'original';
     render();
     window.scrollTo(0, 0);
 }
@@ -72,14 +84,58 @@ function goBack() {
     render();
 }
 
-function setFilter(f) {
-    activeFilter = f;
+function setFilter(f) { activeFilter = f; render(); }
+function setSearch(q) { searchQuery = q.toLowerCase(); render(); }
+
+function selectPhoto(index) {
+    selectedPhotoIndex = index;
+    const c = getClaim(currentClaimId);
+    const photos = getPhotos(c);
+    const originals = photos.filter(p => p.type === 'original');
+    const annotated = photos.filter(p => p.type === 'annotated');
+    const pool = photoViewMode === 'annotated' ? annotated : originals;
+    const photo = pool[index];
+    if (photo) {
+        const mainImg = document.getElementById('main-photo');
+        if (mainImg) mainImg.src = photo.url || photo.blobUrl;
+    }
+    document.querySelectorAll('.photo-thumb').forEach((el, i) => {
+        el.classList.toggle('ring-2', i === index);
+        el.classList.toggle('ring-brand', i === index);
+        el.classList.toggle('ring-offset-2', i === index);
+        el.classList.toggle('opacity-50', i !== index);
+        el.classList.toggle('opacity-100', i === index);
+    });
+}
+
+function setPhotoMode(mode) {
+    photoViewMode = mode;
+    selectedPhotoIndex = 0;
     render();
 }
 
-function setSearch(q) {
-    searchQuery = q.toLowerCase();
-    render();
+function openLightbox(src) {
+    const lb = document.getElementById('lightbox');
+    document.getElementById('lightbox-img').src = src;
+    lb.classList.remove('hidden');
+    lb.classList.add('flex');
+}
+
+function closeLightbox() {
+    const lb = document.getElementById('lightbox');
+    lb.classList.add('hidden');
+    lb.classList.remove('flex');
+}
+
+function initMap(c) {
+    const loc = c?.incident?.location || c?.location || {};
+    const mapEl = document.getElementById('claim-map');
+    if (!mapEl || !loc.lat || !loc.lng) return;
+    const map = L.map('claim-map', { zoomControl: false, attributionControl: false }).setView([loc.lat, loc.lng], 15);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+    L.marker([loc.lat, loc.lng]).addTo(map);
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+    setTimeout(() => map.invalidateSize(), 100);
 }
 
 // --- Helpers ---
@@ -92,8 +148,14 @@ function severityBadge(sev, size = 'sm') {
         pending: 'bg-gray-100 text-gray-500 ring-1 ring-gray-200',
     };
     const cls = colors[s] || colors.pending;
-    const px = size === 'lg' ? 'px-3 py-1.5 text-sm' : 'px-2.5 py-0.5 text-xs';
+    const px = size === 'lg' ? 'px-3 py-1 text-sm' : 'px-2.5 py-0.5 text-xs';
     return `<span class="${px} font-bold rounded-full uppercase tracking-wide ${cls}">${sev || 'Pending'}</span>`;
+}
+
+function severityDot(sev) {
+    const s = (sev || 'pending').toLowerCase();
+    const c = { major: 'bg-red-500', medium: 'bg-amber-400', minor: 'bg-emerald-500', pending: 'bg-gray-300' };
+    return `<span class="w-2.5 h-2.5 rounded-full ${c[s] || c.pending} shrink-0"></span>`;
 }
 
 function timeAgo(dateStr) {
@@ -112,13 +174,6 @@ function timeAgo(dateStr) {
 function formatDate(dateStr) {
     if (!dateStr) return 'N/A';
     return new Date(dateStr).toLocaleString('en-AU', { dateStyle: 'medium', timeStyle: 'short' });
-}
-
-function getField(claim, nestedPath, flatKey) {
-    const parts = nestedPath.split('.');
-    let val = claim;
-    for (const p of parts) { val = val?.[p]; }
-    return val ?? claim?.[flatKey] ?? '';
 }
 
 function getDriverName(c) { return c.driver?.name || c.driverName || 'Unknown'; }
@@ -153,11 +208,9 @@ function incidentTypeLabel(type) {
 // --- List View ---
 function renderList() {
     let filtered = [...claims];
-
     if (activeFilter !== 'all') {
         filtered = filtered.filter(c => (c.severity || 'Pending').toLowerCase() === activeFilter);
     }
-
     if (searchQuery) {
         filtered = filtered.filter(c => {
             const haystack = [getDriverName(c), getRego(c), getVehicleDesc(c), getIncidentType(c), c.id].join(' ').toLowerCase();
@@ -174,7 +227,7 @@ function renderList() {
     };
 
     return `
-    <div class="max-w-5xl mx-auto py-8 px-4">
+    <div class="max-w-6xl mx-auto py-8 px-6">
         <div class="flex justify-between items-start mb-8">
             <div>
                 <h1 class="text-2xl font-bold text-gray-900">Roadify <span class="text-brand">Claims</span></h1>
@@ -249,6 +302,8 @@ function renderDetail(c) {
     const photos = getPhotos(c);
     const originals = photos.filter(p => p.type === 'original');
     const annotated = photos.filter(p => p.type === 'annotated');
+    const pool = photoViewMode === 'annotated' && annotated.length > 0 ? annotated : originals;
+    const featured = pool[selectedPhotoIndex] || pool[0];
     const tags = contextTags(c);
     const loc = c.incident?.location || c.location || {};
     const desc = c.incident?.description || c.description || '';
@@ -256,115 +311,87 @@ function renderDetail(c) {
     const claimant = c.claimantVehicle || {};
     const driver = c.driver || {};
     const aiReport = c.aiReport || null;
+    const hasLocation = loc.lat && loc.lng;
+
+    const infoRow = (label, value, mono = false) =>
+        `<div class="flex justify-between py-1.5 border-b border-gray-50 last:border-0">
+            <span class="text-gray-400 text-xs">${label}</span>
+            <span class="text-xs font-medium text-gray-800 ${mono ? 'font-mono' : ''} text-right max-w-[60%] truncate">${value || '—'}</span>
+        </div>`;
 
     return `
-    <div class="max-w-5xl mx-auto py-8 px-4 fade-in">
-        <!-- Header -->
-        <div class="mb-6">
-            <button onclick="goBack()" class="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors cursor-pointer mb-4">
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5"/></svg>
-                Back to Claims
-            </button>
-            <div class="flex flex-wrap items-center justify-between gap-4">
-                <div class="flex items-center gap-3">
-                    <h1 class="text-xl font-bold text-gray-900">Claim ${(c.id || '').slice(0, 8).toUpperCase()}</h1>
-                    ${severityBadge(c.severity, 'lg')}
-                    <span class="px-2.5 py-1 bg-blue-50 text-blue-600 text-xs font-semibold rounded-full">${c.status || 'Submitted'}</span>
-                    <span class="text-sm text-gray-400">${timeAgo(c.createdAt)}</span>
+    <div class="max-w-[1400px] mx-auto py-6 px-6 fade-in">
+        <!-- Header bar -->
+        <div class="flex items-center justify-between mb-5">
+            <div class="flex items-center gap-4">
+                <button onclick="goBack()" class="w-9 h-9 rounded-lg bg-gray-100 hover:bg-gray-200 flex items-center justify-center cursor-pointer transition-colors">
+                    <svg class="w-4 h-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5"/></svg>
+                </button>
+                <div>
+                    <div class="flex items-center gap-2.5">
+                        <h1 class="text-lg font-bold text-gray-900">Claim ${(c.id || '').slice(0, 8).toUpperCase()}</h1>
+                        ${severityBadge(c.severity, 'lg')}
+                        <span class="px-2.5 py-0.5 bg-blue-50 text-blue-600 text-xs font-semibold rounded-full">${c.status || 'Submitted'}</span>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-0.5">${getDriverName(c)} &middot; ${getRego(c)} &middot; ${timeAgo(c.createdAt)}</p>
                 </div>
-                <div class="flex gap-2">
-                    <button class="px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 transition-colors cursor-pointer">Approve</button>
-                    <button class="px-4 py-2 bg-white text-gray-700 text-sm font-semibold rounded-lg ring-1 ring-gray-200 hover:bg-gray-50 transition-colors cursor-pointer">Request Info</button>
-                    <button class="px-4 py-2 bg-white text-amber-600 text-sm font-semibold rounded-lg ring-1 ring-amber-200 hover:bg-amber-50 transition-colors cursor-pointer">Flag</button>
-                    <button class="px-4 py-2 bg-white text-red-600 text-sm font-semibold rounded-lg ring-1 ring-red-200 hover:bg-red-50 transition-colors cursor-pointer">Escalate</button>
-                </div>
+            </div>
+            <div class="flex gap-2">
+                <button class="px-4 py-2 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 transition-colors cursor-pointer">Approve</button>
+                <button class="px-4 py-2 bg-white text-gray-600 text-xs font-semibold rounded-lg ring-1 ring-gray-200 hover:bg-gray-50 transition-colors cursor-pointer">Request Info</button>
+                <button class="px-4 py-2 bg-white text-red-600 text-xs font-semibold rounded-lg ring-1 ring-red-200 hover:bg-red-50 transition-colors cursor-pointer">Escalate</button>
             </div>
         </div>
 
-        <!-- Two column layout -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
-            <!-- LEFT COLUMN -->
-            <div class="space-y-4">
-                <!-- Claimant Vehicle -->
-                <div class="bg-white rounded-xl border border-gray-200 p-5">
-                    <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Claimant Vehicle</h3>
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-brand/10 rounded-lg flex items-center justify-center">
-                            <svg class="w-5 h-5 text-brand" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 00-3.213-9.193 2.056 2.056 0 00-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 00-10.026 0 1.106 1.106 0 00-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12"/></svg>
+        <!-- Main 3-column grid -->
+        <div class="grid grid-cols-12 gap-5">
+
+            <!-- LEFT: Photos (col-span-7) -->
+            <div class="col-span-12 lg:col-span-7 space-y-3">
+                ${photos.length > 0 ? `
+                <!-- Mode toggle -->
+                <div class="flex items-center justify-between">
+                    <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider">Evidence Photos</h3>
+                    <div class="flex rounded-lg overflow-hidden ring-1 ring-gray-200">
+                        <button onclick="setPhotoMode('original')" class="px-3 py-1 text-xs font-semibold cursor-pointer ${photoViewMode === 'original' ? 'bg-gray-900 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}">Original</button>
+                        <button onclick="setPhotoMode('annotated')" class="px-3 py-1 text-xs font-semibold cursor-pointer ${annotated.length === 0 ? 'bg-gray-50 text-gray-300 cursor-not-allowed' : photoViewMode === 'annotated' ? 'bg-brand text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}" ${annotated.length === 0 ? 'disabled' : ''}>AI Annotated</button>
+                    </div>
+                </div>
+
+                <!-- Featured image -->
+                <div class="bg-white rounded-xl border border-gray-200 overflow-hidden cursor-pointer" onclick="openLightbox(document.getElementById('main-photo')?.src)">
+                    <div class="aspect-[16/10] bg-gray-100 flex items-center justify-center relative">
+                        ${featured ? `
+                        <img id="main-photo" src="${featured.url || featured.blobUrl}" alt="${featured.slot}" class="w-full h-full object-contain" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+                        <div class="hidden flex-col items-center justify-center text-gray-400 absolute inset-0 bg-gray-100">
+                            <svg class="w-12 h-12 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5"/></svg>
+                            <span class="text-sm">Image unavailable</span>
                         </div>
-                        <div>
-                            <p class="font-semibold text-gray-900">${[claimant.color || c.vehicleColor, claimant.year || c.vehicleYear, claimant.make || c.vehicleMake, claimant.model || c.vehicleModel].filter(Boolean).join(' ')}</p>
-                            <p class="text-sm text-gray-500 font-mono">${claimant.rego || c.vehicleRego || '—'}</p>
-                        </div>
+                        <span class="absolute bottom-2 left-2 px-2.5 py-1 bg-black/60 text-white text-xs font-medium rounded-lg capitalize backdrop-blur-sm">${featured.slot} ${photoViewMode === 'annotated' ? '— AI' : ''}</span>
+                        <span class="absolute bottom-2 right-2 px-2 py-1 bg-black/40 text-white/70 text-[10px] rounded-lg backdrop-blur-sm">Click to enlarge</span>
+                        ` : `
+                        <div class="text-gray-400 text-sm">No photos available</div>
+                        `}
                     </div>
                 </div>
 
-                <!-- Other Vehicle -->
-                ${ctx.thirdPartyInvolved ? `
-                <div class="bg-white rounded-xl border border-gray-200 p-5">
-                    <div class="flex items-center justify-between mb-3">
-                        <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider">Other Vehicle</h3>
-                        ${ctx.hitAndRun ? '<span class="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-bold rounded-full">Hit & Run</span>' : ''}
+                <!-- Thumbnail strip -->
+                <div class="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
+                    ${pool.map((p, i) => `
+                    <div onclick="selectPhoto(${i})" class="photo-thumb shrink-0 w-20 h-20 rounded-lg overflow-hidden border-2 cursor-pointer transition-all ${i === selectedPhotoIndex ? 'ring-2 ring-brand ring-offset-2 opacity-100' : 'border-gray-200 opacity-50 hover:opacity-80'}">
+                        <img src="${p.url || p.blobUrl}" alt="${p.slot}" class="w-full h-full object-cover" onerror="this.parentElement.innerHTML='<div class=\\'w-full h-full bg-gray-100 flex items-center justify-center text-gray-300 text-xs\\'>N/A</div>'" />
                     </div>
-                    ${other && (other.rego || other.make) ? `
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-red-50 rounded-lg flex items-center justify-center">
-                            <svg class="w-5 h-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 00-3.213-9.193 2.056 2.056 0 00-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 00-10.026 0 1.106 1.106 0 00-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12"/></svg>
-                        </div>
-                        <div>
-                            <p class="font-semibold text-gray-900">${[other.color, other.make, other.model].filter(Boolean).join(' ') || 'Unknown'}</p>
-                            <p class="text-sm text-gray-500 font-mono">${other.rego || 'Plate unknown'}</p>
-                        </div>
-                    </div>
-                    ` : `
-                    <p class="text-sm text-gray-400 italic">${ctx.hitAndRun ? 'Other vehicle fled — no details captured' : 'No vehicle details available'}</p>
-                    `}
+                    `).join('')}
                 </div>
-                ` : ctx.collisionObject ? `
-                <div class="bg-white rounded-xl border border-gray-200 p-5">
-                    <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Collision Object</h3>
-                    <p class="font-semibold text-gray-900 capitalize">${ctx.collisionObject}</p>
-                    <p class="text-sm text-gray-400">Single vehicle incident</p>
+                ` : `
+                <div class="bg-white rounded-xl border border-gray-200 p-8 text-center">
+                    <svg class="w-12 h-12 text-gray-300 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5"/></svg>
+                    <p class="text-sm text-gray-400">No photos submitted</p>
                 </div>
-                ` : ''}
+                `}
 
-                <!-- Incident Context -->
-                <div class="bg-white rounded-xl border border-gray-200 p-5">
-                    <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Incident Context</h3>
-                    <div class="flex flex-wrap gap-2 mb-3">
-                        <span class="px-2.5 py-1 bg-gray-100 text-gray-600 text-xs font-semibold rounded-full">${incidentTypeLabel(getIncidentType(c))}</span>
-                        ${tags.map(t => `<span class="px-2.5 py-1 ${t.color} text-xs font-semibold rounded-full">${t.label}</span>`).join('')}
-                    </div>
-                    ${desc ? `<p class="text-sm text-gray-600 leading-relaxed">${desc}</p>` : ''}
-                </div>
-
-                <!-- Driver & Policy -->
-                <div class="bg-white rounded-xl border border-gray-200 p-5">
-                    <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Driver & Policy</h3>
-                    <div class="space-y-2 text-sm">
-                        <div class="flex justify-between"><span class="text-gray-400">Name</span><span class="font-medium text-gray-900">${driver.name || c.driverName || '—'}</span></div>
-                        <div class="flex justify-between"><span class="text-gray-400">Phone</span><span class="font-medium text-gray-900">${driver.phone || c.phone || '—'}</span></div>
-                        <div class="flex justify-between"><span class="text-gray-400">Policy</span><span class="font-medium text-gray-900 font-mono">${driver.policyNumber || c.policyNumber || '—'}</span></div>
-                    </div>
-                </div>
-
-                <!-- Location -->
-                <div class="bg-white rounded-xl border border-gray-200 p-5">
-                    <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Location & Time</h3>
-                    <div class="space-y-2 text-sm">
-                        ${loc.address ? `<div class="flex justify-between"><span class="text-gray-400">Address</span><span class="font-medium text-gray-900 text-right max-w-[65%]">${loc.address}</span></div>` : ''}
-                        ${loc.lat ? `<div class="flex justify-between"><span class="text-gray-400">Coordinates</span><span class="font-mono text-gray-600">${Number(loc.lat).toFixed(5)}, ${Number(loc.lng).toFixed(5)}</span></div>` : ''}
-                        <div class="flex justify-between"><span class="text-gray-400">Incident time</span><span class="font-medium text-gray-900">${formatDate(c.incident?.timestamp || c.timestamp)}</span></div>
-                        <div class="flex justify-between"><span class="text-gray-400">Submitted</span><span class="font-medium text-gray-900">${formatDate(c.createdAt)}</span></div>
-                        ${loc.lat ? `<a href="https://www.google.com/maps/search/?api=1&query=${loc.lat},${loc.lng}" target="_blank" class="inline-flex items-center gap-1 text-brand hover:text-brand/80 text-xs font-semibold mt-1">View on Map <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg></a>` : ''}
-                    </div>
-                </div>
-            </div>
-
-            <!-- RIGHT COLUMN -->
-            <div class="space-y-4">
                 <!-- AI Report -->
-                <div class="bg-white rounded-xl border border-gray-200 p-5">
+                <div class="bg-white rounded-xl border border-gray-200 p-4">
                     <div class="flex items-center justify-between mb-3">
                         <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider">AI Incident Report</h3>
                         ${aiReport ? `<span class="px-2 py-0.5 bg-emerald-50 text-emerald-600 text-xs font-semibold rounded-full">Generated</span>` : `<span class="px-2 py-0.5 bg-amber-50 text-amber-600 text-xs font-semibold rounded-full">Pending</span>`}
@@ -375,111 +402,109 @@ function renderDetail(c) {
                         <ul class="space-y-1.5">
                             ${aiReport.findings.map(f => `<li class="flex items-start gap-2 text-sm text-gray-600"><svg class="w-4 h-4 text-brand shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>${f}</li>`).join('')}
                         </ul>` : ''}
-                        ${aiReport.estimatedRepairClass ? `<p class="text-xs text-gray-400 mt-3">Estimated repair class: <span class="font-semibold text-gray-600">${aiReport.estimatedRepairClass}</span></p>` : ''}
                     ` : `
-                        <div class="flex items-center gap-3 py-6">
-                            <div class="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center">
-                                <svg class="w-4 h-4 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/></svg>
+                        <div class="flex items-center gap-3 py-3">
+                            <div class="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center">
+                                <svg class="w-3.5 h-3.5 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/></svg>
                             </div>
-                            <div>
-                                <p class="text-sm font-medium text-gray-500">Report pending</p>
-                                <p class="text-xs text-gray-400">AI analysis will appear here once generated</p>
-                            </div>
+                            <p class="text-xs text-gray-400">AI analysis will appear here once generated</p>
                         </div>
                     `}
                 </div>
+            </div>
+
+            <!-- RIGHT: Info panels (col-span-5) -->
+            <div class="col-span-12 lg:col-span-5 space-y-3">
+
+                <!-- Incident summary -->
+                <div class="bg-white rounded-xl border border-gray-200 p-4">
+                    <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Incident Summary</h3>
+                    <div class="flex flex-wrap gap-1.5 mb-3">
+                        <span class="px-2.5 py-0.5 bg-gray-100 text-gray-700 text-xs font-semibold rounded-full">${incidentTypeLabel(getIncidentType(c))}</span>
+                        ${tags.map(t => `<span class="px-2.5 py-0.5 ${t.color} text-xs font-semibold rounded-full">${t.label}</span>`).join('')}
+                    </div>
+                    ${desc ? `<p class="text-xs text-gray-600 leading-relaxed">${desc}</p>` : '<p class="text-xs text-gray-400 italic">No description available</p>'}
+                </div>
+
+                <!-- Vehicles side by side -->
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="bg-white rounded-xl border border-gray-200 p-4">
+                        <h3 class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Claimant Vehicle</h3>
+                        <p class="text-sm font-semibold text-gray-900">${[claimant.year || c.vehicleYear, claimant.make || c.vehicleMake, claimant.model || c.vehicleModel].filter(Boolean).join(' ') || '—'}</p>
+                        <p class="text-xs text-gray-500">${claimant.color || c.vehicleColor || ''}</p>
+                        <p class="text-xs text-gray-400 font-mono mt-1">${claimant.rego || c.vehicleRego || '—'}</p>
+                    </div>
+                    <div class="bg-white rounded-xl border border-gray-200 p-4">
+                        <div class="flex items-center justify-between mb-2">
+                            <h3 class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">${ctx.thirdPartyInvolved ? 'Other Vehicle' : 'Object'}</h3>
+                            ${ctx.hitAndRun ? '<span class="w-2 h-2 bg-red-500 rounded-full" title="Hit & Run"></span>' : ''}
+                        </div>
+                        ${ctx.thirdPartyInvolved && other && (other.rego || other.make) ? `
+                            <p class="text-sm font-semibold text-gray-900">${[other.make, other.model].filter(Boolean).join(' ') || 'Unknown'}</p>
+                            <p class="text-xs text-gray-500">${other.color || ''}</p>
+                            <p class="text-xs text-gray-400 font-mono mt-1">${other.rego || 'Unknown plate'}</p>
+                        ` : ctx.collisionObject ? `
+                            <p class="text-sm font-semibold text-gray-900 capitalize">${ctx.collisionObject}</p>
+                            <p class="text-xs text-gray-400">Single vehicle</p>
+                        ` : `
+                            <p class="text-xs text-gray-400 italic">${ctx.hitAndRun ? 'Fled scene' : 'N/A'}</p>
+                        `}
+                    </div>
+                </div>
 
                 <!-- Damage Detections -->
-                <div class="bg-white rounded-xl border border-gray-200 p-5">
-                    <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Damage Detections</h3>
+                <div class="bg-white rounded-xl border border-gray-200 p-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider">Damage Detections</h3>
+                        ${damage.length > 0 ? `<span class="text-xs font-bold text-gray-500">${damage.length}</span>` : ''}
+                    </div>
                     ${damage.length > 0 ? `
-                    <div class="space-y-2.5">
+                    <div class="space-y-2">
                         ${damage.map(d => {
                             const conf = d.confidence || 0;
                             const barColor = conf >= 90 ? 'bg-red-500' : conf >= 75 ? 'bg-amber-500' : 'bg-gray-400';
                             return `
-                            <div>
-                                <div class="flex justify-between items-center mb-1">
-                                    <span class="text-sm font-medium text-gray-700 capitalize">${(d.class || d.label || 'unknown').replace(/_/g, ' ')}</span>
-                                    <span class="text-xs font-bold text-gray-400">${conf}%</span>
+                            <div class="flex items-center gap-3">
+                                <span class="text-xs font-medium text-gray-700 capitalize w-40 truncate">${(d.class || d.label || 'unknown').replace(/_/g, ' ')}</span>
+                                <div class="flex-1 bg-gray-100 rounded-full h-1.5">
+                                    <div class="${barColor} h-1.5 rounded-full" style="width: ${conf}%"></div>
                                 </div>
-                                <div class="w-full bg-gray-100 rounded-full h-1.5">
-                                    <div class="${barColor} h-1.5 rounded-full transition-all" style="width: ${conf}%"></div>
-                                </div>
+                                <span class="text-[10px] font-bold text-gray-400 w-8 text-right">${conf}%</span>
                             </div>`;
                         }).join('')}
                     </div>
-                    ` : '<p class="text-sm text-gray-400 italic py-2">No AI damage detections available</p>'}
+                    ` : '<p class="text-xs text-gray-400 italic">No detections</p>'}
                 </div>
-            </div>
-        </div>
 
-        <!-- Photos — full width -->
-        ${photos.length > 0 ? `
-        <div class="bg-white rounded-xl border border-gray-200 p-5 mb-6">
-            <div class="flex items-center justify-between mb-4">
-                <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider">Evidence Photos</h3>
-                <div class="flex rounded-lg overflow-hidden ring-1 ring-gray-200">
-                    <button id="tab-original" onclick="switchPhotoTab('original')" class="px-3 py-1.5 text-xs font-semibold bg-gray-900 text-white cursor-pointer">Original</button>
-                    <button id="tab-annotated" onclick="switchPhotoTab('annotated')" class="px-3 py-1.5 text-xs font-semibold bg-white text-gray-500 hover:bg-gray-50 cursor-pointer ${annotated.length === 0 ? 'opacity-40 cursor-not-allowed' : ''}">${annotated.length > 0 ? 'AI Annotated' : 'No Annotations'}</button>
+                <!-- Driver & Policy -->
+                <div class="bg-white rounded-xl border border-gray-200 p-4">
+                    <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Policy Holder</h3>
+                    ${infoRow('Name', driver.name || c.driverName)}
+                    ${infoRow('Phone', driver.phone || c.phone)}
+                    ${infoRow('Policy #', driver.policyNumber || c.policyNumber, true)}
+                    ${infoRow('Submitted', formatDate(c.createdAt))}
+                    ${infoRow('Incident Time', formatDate(c.incident?.timestamp || c.timestamp))}
                 </div>
-            </div>
-            <div id="photos-original" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                ${originals.map(p => `
-                <div class="relative group">
-                    <div class="aspect-square rounded-lg bg-gray-100 border border-gray-200 overflow-hidden flex items-center justify-center">
-                        <img src="${p.url || p.blobUrl}" alt="${p.slot}" class="w-full h-full object-cover" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
-                        <div class="hidden flex-col items-center justify-center text-gray-400 absolute inset-0">
-                            <svg class="w-8 h-8 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5"/></svg>
-                            <span class="text-xs">No image</span>
-                        </div>
+
+                <!-- Location with embedded map -->
+                <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                    ${hasLocation ? `
+                    <div id="claim-map" class="w-full h-44"></div>
+                    ` : ''}
+                    <div class="p-4">
+                        <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Location</h3>
+                        ${loc.address ? `<p class="text-xs text-gray-700 font-medium">${loc.address}</p>` : ''}
+                        ${hasLocation ? `<p class="text-[10px] text-gray-400 font-mono mt-1">${Number(loc.lat).toFixed(5)}, ${Number(loc.lng).toFixed(5)}</p>` : '<p class="text-xs text-gray-400 italic">No location data</p>'}
                     </div>
-                    <span class="absolute bottom-1.5 left-1.5 px-2 py-0.5 bg-black/60 text-white text-[10px] font-medium rounded capitalize backdrop-blur-sm">${p.slot}</span>
                 </div>
-                `).join('')}
-            </div>
-            <div id="photos-annotated" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 hidden">
-                ${annotated.length > 0 ? annotated.map(p => `
-                <div class="relative group">
-                    <div class="aspect-square rounded-lg bg-gray-100 border-2 border-brand/20 overflow-hidden flex items-center justify-center">
-                        <img src="${p.url || p.blobUrl}" alt="${p.slot} annotated" class="w-full h-full object-cover" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
-                        <div class="hidden flex-col items-center justify-center text-gray-400 absolute inset-0">
-                            <svg class="w-8 h-8 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5"/></svg>
-                            <span class="text-xs">No image</span>
-                        </div>
-                    </div>
-                    <span class="absolute bottom-1.5 left-1.5 px-2 py-0.5 bg-brand/80 text-white text-[10px] font-medium rounded capitalize backdrop-blur-sm">${p.slot} — AI</span>
-                </div>
-                `).join('') : '<p class="text-sm text-gray-400 italic col-span-full py-4 text-center">No annotated images available for this claim</p>'}
             </div>
         </div>
-        ` : ''}
     </div>`;
-}
-
-function switchPhotoTab(tab) {
-    const origEl = document.getElementById('photos-original');
-    const annoEl = document.getElementById('photos-annotated');
-    const tabOrig = document.getElementById('tab-original');
-    const tabAnno = document.getElementById('tab-annotated');
-    if (!origEl || !annoEl) return;
-
-    if (tab === 'annotated') {
-        origEl.classList.add('hidden');
-        annoEl.classList.remove('hidden');
-        tabOrig.className = tabOrig.className.replace('bg-gray-900 text-white', 'bg-white text-gray-500 hover:bg-gray-50');
-        tabAnno.className = tabAnno.className.replace('bg-white text-gray-500 hover:bg-gray-50', 'bg-gray-900 text-white');
-    } else {
-        annoEl.classList.add('hidden');
-        origEl.classList.remove('hidden');
-        tabAnno.className = tabAnno.className.replace('bg-gray-900 text-white', 'bg-white text-gray-500 hover:bg-gray-50');
-        tabOrig.className = tabOrig.className.replace('bg-white text-gray-500 hover:bg-gray-50', 'bg-gray-900 text-white');
-    }
 }
 
 // Init
 fetchClaims();
-setInterval(fetchClaims, 15000);
+setInterval(fetchClaims, 30000);
 </script>
 </body>
 </html>
