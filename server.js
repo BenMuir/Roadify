@@ -115,6 +115,8 @@ app.post('/submit-claim', async (req, res) => {
                 parkedWhenHit: body.parkedWhenHit,
                 collisionObject: body.collisionObject || "",
                 atFault: body.atFault,
+                vehicleSpeed: body.vehicleSpeed || "",
+                roadCondition: body.roadCondition || "",
             },
 
             incident: {
