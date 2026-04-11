@@ -13,7 +13,9 @@
                 extend: {
                     colors: {
                         navy: '#0f1729',
+                        'navy-light': '#1a2332',
                         brand: '#6366f1',
+                        'brand-light': '#818cf8',
                     }
                 }
             }
@@ -24,9 +26,15 @@
         @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-        .photo-thumb { transition: all 0.15s; }
-        .photo-thumb.active { ring: 2px solid #6366f1; }
         #lightbox { transition: opacity 0.2s; }
+        .map-pulse {
+            width: 18px; height: 18px; border-radius: 50%;
+            background: #6366f1; border: 3px solid white;
+            box-shadow: 0 0 0 0 rgba(99,102,241,0.5), 0 2px 8px rgba(0,0,0,0.3);
+            animation: mapPulse 2s ease-out infinite;
+        }
+        @keyframes mapPulse { 0% { box-shadow: 0 0 0 0 rgba(99,102,241,0.5), 0 2px 8px rgba(0,0,0,0.3); } 70% { box-shadow: 0 0 0 12px rgba(99,102,241,0), 0 2px 8px rgba(0,0,0,0.3); } 100% { box-shadow: 0 0 0 0 rgba(99,102,241,0), 0 2px 8px rgba(0,0,0,0.3); } }
+        .leaflet-container { background: #f3f4f6; }
     </style>
 </head>
 <body class="bg-gray-50 font-sans text-gray-900 min-h-screen">
@@ -51,7 +59,7 @@ async function fetchClaims() {
         const res = await fetch(`${API}/incidents`);
         claims = await res.json();
         claims.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-        render();
+        if (currentView === 'list') render();
     } catch (err) {
         console.error('Failed to fetch claims:', err);
     }
@@ -87,17 +95,26 @@ function goBack() {
 function setFilter(f) { activeFilter = f; render(); }
 function setSearch(q) { searchQuery = q.toLowerCase(); render(); }
 
-function selectPhoto(index) {
-    selectedPhotoIndex = index;
-    const c = getClaim(currentClaimId);
+function getPhotoPool(c) {
     const photos = getPhotos(c);
     const originals = photos.filter(p => p.type === 'original');
     const annotated = photos.filter(p => p.type === 'annotated');
-    const pool = photoViewMode === 'annotated' ? annotated : originals;
+    return photoViewMode === 'annotated' && annotated.length > 0 ? annotated : originals;
+}
+
+function selectPhoto(index) {
+    selectedPhotoIndex = index;
+    const c = getClaim(currentClaimId);
+    const pool = getPhotoPool(c);
     const photo = pool[index];
     if (photo) {
         const mainImg = document.getElementById('main-photo');
-        if (mainImg) mainImg.src = photo.url || photo.blobUrl;
+        const slotLabel = document.getElementById('photo-slot-label');
+        if (mainImg) {
+            mainImg.style.display = '';
+            mainImg.src = photo.url || photo.blobUrl;
+        }
+        if (slotLabel) slotLabel.textContent = photo.slot + (photoViewMode === 'annotated' ? ' — AI' : '');
     }
     document.querySelectorAll('.photo-thumb').forEach((el, i) => {
         el.classList.toggle('ring-2', i === index);
@@ -109,9 +126,54 @@ function selectPhoto(index) {
 }
 
 function setPhotoMode(mode) {
+    const c = getClaim(currentClaimId);
+    const photos = getPhotos(c);
+    const annotated = photos.filter(p => p.type === 'annotated');
+    if (mode === 'annotated' && annotated.length === 0) return;
+
     photoViewMode = mode;
     selectedPhotoIndex = 0;
-    render();
+    const pool = getPhotoPool(c);
+
+    // Update main image
+    const mainImg = document.getElementById('main-photo');
+    const slotLabel = document.getElementById('photo-slot-label');
+    if (pool[0] && mainImg) {
+        mainImg.style.display = '';
+        mainImg.src = pool[0].url || pool[0].blobUrl;
+    }
+    if (slotLabel) slotLabel.textContent = (pool[0]?.slot || '') + (mode === 'annotated' ? ' — AI' : '');
+
+    // Update thumbnails
+    const strip = document.getElementById('thumb-strip');
+    if (strip) {
+        strip.innerHTML = pool.map((p, i) => `
+            <div onclick="selectPhoto(${i})" class="photo-thumb shrink-0 w-20 h-20 rounded-lg overflow-hidden border-2 cursor-pointer transition-all ${i === 0 ? 'ring-2 ring-brand ring-offset-2 opacity-100' : 'border-gray-200 opacity-50 hover:opacity-80'}">
+                <img src="${p.url || p.blobUrl}" alt="${p.slot}" class="w-full h-full object-cover" onerror="this.parentElement.innerHTML='<div class=\\'w-full h-full bg-gray-100 flex items-center justify-center text-gray-300 text-xs\\'>N/A</div>'" />
+            </div>
+        `).join('');
+    }
+
+    // Update toggle buttons
+    const btnOrig = document.getElementById('btn-mode-original');
+    const btnAnno = document.getElementById('btn-mode-annotated');
+    if (btnOrig && btnAnno) {
+        if (mode === 'original') {
+            btnOrig.className = 'px-3 py-1 text-xs font-semibold cursor-pointer bg-gray-900 text-white';
+            btnAnno.className = 'px-3 py-1 text-xs font-semibold cursor-pointer bg-white text-gray-500 hover:bg-gray-50';
+        } else {
+            btnOrig.className = 'px-3 py-1 text-xs font-semibold cursor-pointer bg-white text-gray-500 hover:bg-gray-50';
+            btnAnno.className = 'px-3 py-1 text-xs font-semibold cursor-pointer bg-brand text-white';
+        }
+    }
+}
+
+function toggleDamage() {
+    const panel = document.getElementById('damage-panel');
+    const icon = document.getElementById('damage-chevron');
+    if (!panel) return;
+    const hidden = panel.classList.toggle('hidden');
+    if (icon) icon.style.transform = hidden ? '' : 'rotate(180deg)';
 }
 
 function openLightbox(src) {
@@ -132,10 +194,14 @@ function initMap(c) {
     const mapEl = document.getElementById('claim-map');
     if (!mapEl || !loc.lat || !loc.lng) return;
     const map = L.map('claim-map', { zoomControl: false, attributionControl: false }).setView([loc.lat, loc.lng], 15);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
-    L.marker([loc.lat, loc.lng]).addTo(map);
+    L.tileLayer('https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png', {
+        maxZoom: 19,
+        attribution: '&copy; CARTO',
+    }).addTo(map);
+    const pulseIcon = L.divIcon({ className: '', html: '<div class="map-pulse"></div>', iconSize: [18, 18], iconAnchor: [9, 9] });
+    L.marker([loc.lat, loc.lng], { icon: pulseIcon }).addTo(map);
     L.control.zoom({ position: 'bottomright' }).addTo(map);
-    setTimeout(() => map.invalidateSize(), 100);
+    setTimeout(() => map.invalidateSize(), 150);
 }
 
 // --- Helpers ---
@@ -150,12 +216,6 @@ function severityBadge(sev, size = 'sm') {
     const cls = colors[s] || colors.pending;
     const px = size === 'lg' ? 'px-3 py-1 text-sm' : 'px-2.5 py-0.5 text-xs';
     return `<span class="${px} font-bold rounded-full uppercase tracking-wide ${cls}">${sev || 'Pending'}</span>`;
-}
-
-function severityDot(sev) {
-    const s = (sev || 'pending').toLowerCase();
-    const c = { major: 'bg-red-500', medium: 'bg-amber-400', minor: 'bg-emerald-500', pending: 'bg-gray-300' };
-    return `<span class="w-2.5 h-2.5 rounded-full ${c[s] || c.pending} shrink-0"></span>`;
 }
 
 function timeAgo(dateStr) {
@@ -302,7 +362,7 @@ function renderDetail(c) {
     const photos = getPhotos(c);
     const originals = photos.filter(p => p.type === 'original');
     const annotated = photos.filter(p => p.type === 'annotated');
-    const pool = photoViewMode === 'annotated' && annotated.length > 0 ? annotated : originals;
+    const pool = getPhotoPool(c);
     const featured = pool[selectedPhotoIndex] || pool[0];
     const tags = contextTags(c);
     const loc = c.incident?.location || c.location || {};
@@ -343,22 +403,20 @@ function renderDetail(c) {
             </div>
         </div>
 
-        <!-- Main 3-column grid -->
+        <!-- Main grid -->
         <div class="grid grid-cols-12 gap-5">
 
             <!-- LEFT: Photos (col-span-7) -->
             <div class="col-span-12 lg:col-span-7 space-y-3">
                 ${photos.length > 0 ? `
-                <!-- Mode toggle -->
                 <div class="flex items-center justify-between">
                     <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider">Evidence Photos</h3>
                     <div class="flex rounded-lg overflow-hidden ring-1 ring-gray-200">
-                        <button onclick="setPhotoMode('original')" class="px-3 py-1 text-xs font-semibold cursor-pointer ${photoViewMode === 'original' ? 'bg-gray-900 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}">Original</button>
-                        <button onclick="setPhotoMode('annotated')" class="px-3 py-1 text-xs font-semibold cursor-pointer ${annotated.length === 0 ? 'bg-gray-50 text-gray-300 cursor-not-allowed' : photoViewMode === 'annotated' ? 'bg-brand text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}" ${annotated.length === 0 ? 'disabled' : ''}>AI Annotated</button>
+                        <button id="btn-mode-original" onclick="setPhotoMode('original')" class="px-3 py-1 text-xs font-semibold cursor-pointer ${photoViewMode === 'original' ? 'bg-gray-900 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}">Original</button>
+                        <button id="btn-mode-annotated" onclick="setPhotoMode('annotated')" class="px-3 py-1 text-xs font-semibold cursor-pointer ${annotated.length === 0 ? 'bg-gray-50 text-gray-300 cursor-not-allowed' : photoViewMode === 'annotated' ? 'bg-brand text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}" ${annotated.length === 0 ? 'disabled' : ''}>AI Annotated</button>
                     </div>
                 </div>
 
-                <!-- Featured image -->
                 <div class="bg-white rounded-xl border border-gray-200 overflow-hidden cursor-pointer" onclick="openLightbox(document.getElementById('main-photo')?.src)">
                     <div class="aspect-[16/10] bg-gray-100 flex items-center justify-center relative">
                         ${featured ? `
@@ -367,7 +425,7 @@ function renderDetail(c) {
                             <svg class="w-12 h-12 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5"/></svg>
                             <span class="text-sm">Image unavailable</span>
                         </div>
-                        <span class="absolute bottom-2 left-2 px-2.5 py-1 bg-black/60 text-white text-xs font-medium rounded-lg capitalize backdrop-blur-sm">${featured.slot} ${photoViewMode === 'annotated' ? '— AI' : ''}</span>
+                        <span id="photo-slot-label" class="absolute bottom-2 left-2 px-2.5 py-1 bg-black/60 text-white text-xs font-medium rounded-lg capitalize backdrop-blur-sm">${featured.slot}${photoViewMode === 'annotated' ? ' — AI' : ''}</span>
                         <span class="absolute bottom-2 right-2 px-2 py-1 bg-black/40 text-white/70 text-[10px] rounded-lg backdrop-blur-sm">Click to enlarge</span>
                         ` : `
                         <div class="text-gray-400 text-sm">No photos available</div>
@@ -375,8 +433,7 @@ function renderDetail(c) {
                     </div>
                 </div>
 
-                <!-- Thumbnail strip -->
-                <div class="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
+                <div id="thumb-strip" class="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
                     ${pool.map((p, i) => `
                     <div onclick="selectPhoto(${i})" class="photo-thumb shrink-0 w-20 h-20 rounded-lg overflow-hidden border-2 cursor-pointer transition-all ${i === selectedPhotoIndex ? 'ring-2 ring-brand ring-offset-2 opacity-100' : 'border-gray-200 opacity-50 hover:opacity-80'}">
                         <img src="${p.url || p.blobUrl}" alt="${p.slot}" class="w-full h-full object-cover" onerror="this.parentElement.innerHTML='<div class=\\'w-full h-full bg-gray-100 flex items-center justify-center text-gray-300 text-xs\\'>N/A</div>'" />
@@ -416,6 +473,38 @@ function renderDetail(c) {
             <!-- RIGHT: Info panels (col-span-5) -->
             <div class="col-span-12 lg:col-span-5 space-y-3">
 
+                <!-- Policy Holder (top) -->
+                <div class="bg-white rounded-xl border border-gray-200 p-4">
+                    <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Policy Holder</h3>
+                    ${infoRow('Name', driver.name || c.driverName)}
+                    ${infoRow('Phone', driver.phone || c.phone)}
+                    ${infoRow('Policy #', driver.policyNumber || c.policyNumber, true)}
+                    ${infoRow('Submitted', formatDate(c.createdAt))}
+                    ${infoRow('Incident Time', formatDate(c.incident?.timestamp || c.timestamp))}
+                </div>
+
+                <!-- Map (prominent, near top) -->
+                <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                    ${hasLocation ? `
+                    <div id="claim-map" class="w-full h-48"></div>
+                    <div class="bg-navy px-4 py-2.5 flex items-center gap-2.5">
+                        <svg class="w-4 h-4 text-brand-light shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
+                        </svg>
+                        <div class="min-w-0 flex-1">
+                            <p class="text-white text-xs font-medium truncate">${loc.address || 'Location found'}</p>
+                            <p class="text-white/40 text-[10px] font-mono">${Number(loc.lat).toFixed(5)}, ${Number(loc.lng).toFixed(5)}</p>
+                        </div>
+                    </div>
+                    ` : `
+                    <div class="p-4">
+                        <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Location</h3>
+                        <p class="text-xs text-gray-400 italic">No location data available</p>
+                    </div>
+                    `}
+                </div>
+
                 <!-- Incident summary -->
                 <div class="bg-white rounded-xl border border-gray-200 p-4">
                     <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Incident Summary</h3>
@@ -452,51 +541,35 @@ function renderDetail(c) {
                     </div>
                 </div>
 
-                <!-- Damage Detections -->
-                <div class="bg-white rounded-xl border border-gray-200 p-4">
-                    <div class="flex items-center justify-between mb-3">
-                        <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider">Damage Detections</h3>
-                        ${damage.length > 0 ? `<span class="text-xs font-bold text-gray-500">${damage.length}</span>` : ''}
+                <!-- Damage Detections (collapsible) -->
+                <div class="bg-white rounded-xl border border-gray-200">
+                    <button onclick="toggleDamage()" class="w-full flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 rounded-xl transition-colors">
+                        <div class="flex items-center gap-2.5">
+                            <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider">Damage Detections</h3>
+                            ${damage.length > 0 ? `<span class="px-1.5 py-0.5 bg-gray-100 text-gray-500 text-[10px] font-bold rounded-full">${damage.length}</span>` : ''}
+                        </div>
+                        <svg id="damage-chevron" class="w-4 h-4 text-gray-400 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg>
+                    </button>
+                    <div id="damage-panel" class="hidden px-4 pb-4">
+                        ${damage.length > 0 ? `
+                        <div class="space-y-2">
+                            ${damage.map(d => {
+                                const conf = d.confidence || 0;
+                                const barColor = conf >= 90 ? 'bg-red-500' : conf >= 75 ? 'bg-amber-500' : 'bg-gray-400';
+                                return `
+                                <div class="flex items-center gap-3">
+                                    <span class="text-xs font-medium text-gray-700 capitalize w-40 truncate">${(d.class || d.label || 'unknown').replace(/_/g, ' ')}</span>
+                                    <div class="flex-1 bg-gray-100 rounded-full h-1.5">
+                                        <div class="${barColor} h-1.5 rounded-full" style="width: ${conf}%"></div>
+                                    </div>
+                                    <span class="text-[10px] font-bold text-gray-400 w-8 text-right">${conf}%</span>
+                                </div>`;
+                            }).join('')}
+                        </div>
+                        ` : '<p class="text-xs text-gray-400 italic">No detections</p>'}
                     </div>
-                    ${damage.length > 0 ? `
-                    <div class="space-y-2">
-                        ${damage.map(d => {
-                            const conf = d.confidence || 0;
-                            const barColor = conf >= 90 ? 'bg-red-500' : conf >= 75 ? 'bg-amber-500' : 'bg-gray-400';
-                            return `
-                            <div class="flex items-center gap-3">
-                                <span class="text-xs font-medium text-gray-700 capitalize w-40 truncate">${(d.class || d.label || 'unknown').replace(/_/g, ' ')}</span>
-                                <div class="flex-1 bg-gray-100 rounded-full h-1.5">
-                                    <div class="${barColor} h-1.5 rounded-full" style="width: ${conf}%"></div>
-                                </div>
-                                <span class="text-[10px] font-bold text-gray-400 w-8 text-right">${conf}%</span>
-                            </div>`;
-                        }).join('')}
-                    </div>
-                    ` : '<p class="text-xs text-gray-400 italic">No detections</p>'}
                 </div>
 
-                <!-- Driver & Policy -->
-                <div class="bg-white rounded-xl border border-gray-200 p-4">
-                    <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Policy Holder</h3>
-                    ${infoRow('Name', driver.name || c.driverName)}
-                    ${infoRow('Phone', driver.phone || c.phone)}
-                    ${infoRow('Policy #', driver.policyNumber || c.policyNumber, true)}
-                    ${infoRow('Submitted', formatDate(c.createdAt))}
-                    ${infoRow('Incident Time', formatDate(c.incident?.timestamp || c.timestamp))}
-                </div>
-
-                <!-- Location with embedded map -->
-                <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                    ${hasLocation ? `
-                    <div id="claim-map" class="w-full h-44"></div>
-                    ` : ''}
-                    <div class="p-4">
-                        <h3 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Location</h3>
-                        ${loc.address ? `<p class="text-xs text-gray-700 font-medium">${loc.address}</p>` : ''}
-                        ${hasLocation ? `<p class="text-[10px] text-gray-400 font-mono mt-1">${Number(loc.lat).toFixed(5)}, ${Number(loc.lng).toFixed(5)}</p>` : '<p class="text-xs text-gray-400 italic">No location data</p>'}
-                    </div>
-                </div>
             </div>
         </div>
     </div>`;
