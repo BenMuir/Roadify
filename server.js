@@ -38,7 +38,7 @@ app.post('/submit-incident', async (req, res) => {
             id: uuidv4(), // Cosmos DB required unique ID
             ...req.body,  // Includes driverName, vehicleRego, location, insurancePolicy, etc.
             status: "Submitted",
-            severity: "Pending", // To be updated by AI later
+            severity: "Pending", // To be updated by AI  later
             createdAt: new Date().toISOString()
         };
 
