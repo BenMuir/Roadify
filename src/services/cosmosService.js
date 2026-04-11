@@ -31,11 +31,20 @@ const cosmosService = {
     // GET a single incident by ID
     getIncidentById: async (id) => {
         try {
-            // Point read is the most efficient way to get a single item
             const { resource } = await container.item(id, id).read();
             return resource;
         } catch (error) {
             if (error.code === 404) return null;
+            throw error;
+        }
+    },
+
+    deleteIncident: async (id) => {
+        try {
+            await container.item(id, id).delete();
+            return true;
+        } catch (error) {
+            if (error.code === 404) return false;
             throw error;
         }
     }

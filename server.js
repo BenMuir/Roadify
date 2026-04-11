@@ -118,6 +118,17 @@ app.get('/incidents', async (req, res) => {
     }
 });
 
+// Delete a claim
+app.delete('/incidents/:id', async (req, res) => {
+    try {
+        const deleted = await cosmosService.deleteIncident(req.params.id);
+        if (!deleted) return res.status(404).json({ error: "Not found" });
+        res.json({ message: "Deleted", id: req.params.id });
+    } catch (err) {
+        res.status(500).json({ error: "Delete failed", details: err.message });
+    }
+});
+
 // Catch-all for Dashboard
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
