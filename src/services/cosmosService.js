@@ -16,9 +16,23 @@ const cosmosService = {
     // Get all incidents for the Dashboard
     getAllIncidents: async () => {
         const { resources } = await container.items
-            .query("SELECT * from c ORDER BY c.timestamp DESC")
+            .query("SELECT * from c ORDER BY c._ts DESC") // Using _ts (Cosmos internal timestamp) or your custom 'timestamp'
             .fetchAll();
         return resources;
+    },
+
+    // GET a single incident by ID (For the detailed view)
+    getIncidentById: async (id) => {
+        try {
+            // In Cosmos, we use .item(id, partitionKey)
+            // Since we use 'id' as the partition key, it's (id, id)
+            const { resource } = await container.item(id, id).read();
+            return resource;
+        } catch (error) {
+            // Handle cases where the ID doesn't exist
+            if (error.code === 404) return null;
+            throw error;
+        }
     }
 };
 
