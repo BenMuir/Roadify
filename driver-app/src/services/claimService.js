@@ -1,8 +1,10 @@
+import { generateIncidentReport } from './openai'
+
 const API_URL = import.meta.env.VITE_API_URL
 
 export async function submitClaim(formData, onProgress) {
   const claimId = crypto.randomUUID()
-  onProgress?.('Preparing claim...')
+  onProgress?.('Generating AI report...')
 
   const photoSlots = formData.photoSlots || {}
   const slotKeys = Object.keys(photoSlots)
@@ -20,6 +22,8 @@ export async function submitClaim(formData, onProgress) {
       photoRecords.push({ slot, type: 'annotated', dataUrl: annotatedImages[i] })
     }
   }
+
+  const aiReport = await generateIncidentReport(formData)
 
   onProgress?.('Submitting claim...')
   const damageDetections = (formData.damagePredictions || []).map((p) => ({
@@ -46,12 +50,15 @@ export async function submitClaim(formData, onProgress) {
     parkedWhenHit: formData.parkedWhenHit,
     collisionObject: formData.collisionObject,
     atFault: formData.atFault,
+    vehicleSpeed: formData.vehicleSpeed,
+    roadCondition: formData.roadCondition,
     incidentType: formData.incidentType,
     description: formData.description,
     location: formData.location,
     timestamp: formData.timestamp,
     damageDetections,
     photos: photoRecords,
+    aiReport,
   }
 
   const submitRes = await fetch(`${API_URL}/submit-claim`, {

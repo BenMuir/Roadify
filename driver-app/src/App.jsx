@@ -41,6 +41,8 @@ const initialFormData = {
   hitAndRun: null,
   parkedWhenHit: null,
   collisionObject: '',
+  vehicleSpeed: '',
+  roadCondition: '',
   incidentType: '',
   description: '',
   photos: [],

@@ -11,6 +11,20 @@ const COLLISION_OBJECTS = [
   { value: 'other', label: 'Other object' },
 ]
 
+const SPEED_OPTIONS = [
+  { value: 'stationary', label: 'Stationary / Parked' },
+  { value: 'slow', label: 'Slow (< 20 km/h)' },
+  { value: 'moderate', label: 'Moderate (20–60 km/h)' },
+  { value: 'fast', label: 'Fast (60+ km/h)' },
+]
+
+const ROAD_CONDITIONS = [
+  { value: 'dry', label: 'Dry' },
+  { value: 'wet', label: 'Wet / Rainy' },
+  { value: 'gravel', label: 'Gravel / Dirt' },
+  { value: 'icy', label: 'Icy / Slippery' },
+]
+
 function ChoiceButton({ selected, onClick, children, variant = 'default' }) {
   const styles = {
     default: selected
@@ -354,6 +368,58 @@ export default function FaultPage({ formData, updateFormData, userProfile }) {
               >
                 Not sure
               </ChoiceButton>
+            </QuestionBlock>
+          )}
+        </AnimatePresence>
+
+        {/* Speed at time of incident */}
+        <AnimatePresence>
+          {formData.thirdPartyInvolved !== null && (
+            <QuestionBlock
+              question="How fast were you going?"
+              subtitle="Helps assess damage plausibility"
+            >
+              <div className="grid grid-cols-2 gap-2">
+                {SPEED_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => update({ vehicleSpeed: opt.value })}
+                    className={`py-3 px-3 rounded-xl font-medium text-sm transition-all cursor-pointer border-2 ${
+                      formData.vehicleSpeed === opt.value
+                        ? 'bg-brand/15 border-brand text-brand-light'
+                        : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </QuestionBlock>
+          )}
+        </AnimatePresence>
+
+        {/* Road / weather conditions */}
+        <AnimatePresence>
+          {formData.thirdPartyInvolved !== null && (
+            <QuestionBlock
+              question="Road conditions?"
+              subtitle="Wet, dry, gravel — helps verify the scene"
+            >
+              <div className="grid grid-cols-2 gap-2">
+                {ROAD_CONDITIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => update({ roadCondition: opt.value })}
+                    className={`py-3 px-3 rounded-xl font-medium text-sm transition-all cursor-pointer border-2 ${
+                      formData.roadCondition === opt.value
+                        ? 'bg-brand/15 border-brand text-brand-light'
+                        : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </QuestionBlock>
           )}
         </AnimatePresence>
