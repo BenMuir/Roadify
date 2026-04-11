@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand: #6366f1;
+  --color-brand-dark: #4f46e5;
+  --color-brand-light: #818cf8;
+  --color-brand-50: #eef2ff;
+  --color-surface: #ffffff;
+  --color-surface-alt: #f8fafc;
+  --color-navy: #0f172a;
+  --color-navy-light: #1e293b;
+  --color-severity-minor: #22c55e;
+  --color-severity-medium: #f59e0b;
+  --color-severity-major: #ef4444;
+}
+
+body {
+  margin: 0;
+  background: #0f172a;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(0.8); opacity: 0.5; }
+  50% { transform: scale(1); opacity: 0.2; }
+  100% { transform: scale(0.8); opacity: 0.5; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes scan-line {
+  0% { top: 0%; }
+  50% { top: 90%; }
+  100% { top: 0%; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 2s ease-in-out infinite;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.animate-scan-line {
+  animation: scan-line 2.5s ease-in-out infinite;
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
