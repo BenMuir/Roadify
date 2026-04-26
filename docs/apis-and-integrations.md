@@ -1,6 +1,26 @@
 # Roadify — APIs & Integrations
 
-## Pitch Deck Tech Stack Diagram
+## Pitch Deck Tech Stack Diagram — Slide Overview
+
+```mermaid
+flowchart LR
+    Driver["Driver<br/>takes photos"] --> App["Roadify App"]
+
+    App -->|real-time photo guidance| OpenAI["OpenAI<br/>photo feedback + claim insights"]
+    App -->|damage detection + annotations| Roboflow["Roboflow<br/>vehicle vision model"]
+
+    OpenAI --> Claim["Smart Claim<br/>pre-filled details"]
+    Roboflow --> Claim
+
+    Claim --> Cloud["Roadify Backend<br/>stores claim + photos"]
+    Cloud --> Dashboard["Insurer Dashboard<br/>review evidence, damage, risk"]
+```
+
+**Slide summary:** Roadify guides the driver while they take photos, uses AI to extract claim details, sends damage photos through Roboflow for annotated visual evidence, then stores everything for the insurer dashboard.
+
+---
+
+## Detailed Tech Stack Diagram
 
 ```mermaid
 flowchart LR
