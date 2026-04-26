@@ -1,5 +1,39 @@
 # Roadify — APIs & Integrations
 
+## Pitch Deck Tech Stack Diagram
+
+```mermaid
+flowchart LR
+    Driver["Driver<br/>captures incident photos"] --> App["React PWA<br/>Driver App"]
+
+    App -->|GPS location| Weather["Open-Meteo API<br/>current weather"]
+    App -->|each new photo<br/>fast coverage check| Coach["OpenAI GPT-4o-mini<br/>Photo Coverage Coach"]
+    Coach -->|suggests missing angles<br/>plate, wide scene, close-up| App
+
+    App -->|up to 6 resized photos<br/>parallel processing| Roboflow["Roboflow Workflows<br/>vehicle damage vision model"]
+    App -->|same photos + claim context<br/>parallel processing| VisionAI["OpenAI GPT-4o-mini<br/>plate + vehicle + incident analysis"]
+
+    Roboflow -->|damage classes<br/>bounding boxes<br/>annotated images| Review["Review Claim<br/>driver confirms details"]
+    VisionAI -->|rego, make, model,<br/>incident type, description| Review
+    Weather -->|temperature, wind,<br/>weather code| Review
+
+    Review -->|claim payload<br/>original + annotated photos<br/>detections + AI fields| Backend["Node.js + Express API<br/>Azure App Service"]
+
+    Backend -->|store original and<br/>annotated images| Blob["Azure Blob Storage<br/>claim photos"]
+    Backend -->|store claim JSON,<br/>photo metadata,<br/>ML detections, weather| Cosmos["Azure Cosmos DB<br/>Incidents container"]
+
+    Backend -.->|async after submission<br/>claim data + detections<br/>weather + signed photo URLs| ReportAI["OpenAI GPT-5.4<br/>AI incident report<br/>severity + liability + fraud"]
+    Blob -.->|signed read URLs<br/>for original photos| ReportAI
+    ReportAI -.->|structured JSON report| Cosmos
+
+    Dashboard["Claims Dashboard<br/>assessor view"] -->|read claim + report| Cosmos
+    Dashboard -->|view originals + annotations<br/>via SAS URLs| Blob
+```
+
+**Pitch summary:** OpenAI is used twice on the driver side: first for real-time photo coaching while photos are being taken, then for fast incident/plate analysis during processing. Roboflow handles the specialised computer vision step for damage detection and returns annotated images. When the claim is submitted, originals and annotations are stored in Azure Blob Storage, claim data is stored in Cosmos DB, and a backend async OpenAI report writes the final claims assessment back to the database for the dashboard.
+
+---
+
 ## 1. Roboflow (Damage Detection)
 
 **What it does:** Automated ML-based vehicle damage detection and annotation.
@@ -16,9 +50,9 @@
 
 ---
 
-## 2. OpenAI GPT (Photo Analysis + Incident Report)
+## 2. OpenAI GPT (Photo Coaching + Photo Analysis + Incident Report)
 
-We make **two separate calls** to OpenAI — one on the client, one on the backend.
+We use **three OpenAI call paths** — two client-side flows for the driver experience, plus one backend async report for the assessor dashboard.
 
 ### 2a. Photo Analysis (Client-Side) — `gpt-4o-mini`
 
